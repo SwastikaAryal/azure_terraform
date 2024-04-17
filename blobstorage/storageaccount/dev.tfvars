@@ -1,0 +1,8 @@
+resource_group_name         = "rg-clng-dev-ceaz-cus-002"
+location                    = "Central US"
+account_name                = "tfaccount"
+account_replication_type    = "GRS"
+account_tier                = "Standard"
+environment                 = "staging"
+default_action              = "Deny"
+subnet_id                   = "/subscriptions/9a84aa6f-97f5-4fb2-96c7-f42602d7ae80/resourceGroups/rg-clng-dev-ceaz-cus-001/providers/Microsoft.Network/virtualNetworks/vnet-clng-dev-ceaz-cus-001/subnets/snet-clng-dev-ceaz-cus-007"

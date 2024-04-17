@@ -1,0 +1,9 @@
+resource_group_name                = "example-resources"
+resource_group_location            = "West Europe"
+storage_account_name               = "azureteststorage"
+storage_account_tier               = "Standard"
+storage_account_replication_type   = "LRS"
+storage_share_name                 = "sharename"
+storage_share_quota                = 50
+storage_share_file_name            = "my-awesome-content.zip"
+storage_share_file_source          = "some-local-file.zip"
