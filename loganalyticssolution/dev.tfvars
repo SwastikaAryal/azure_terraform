@@ -1,0 +1,6 @@
+resource_group_name = "rg-clng-dev-ceaz-cus-002"
+location            = "Central US"
+workspace_name      = "tf-workspace"
+solution_name       = "ContainerInsights"
+publisher           = "Microsoft"
+product             = "OMSGallery/ContainerInsights"
