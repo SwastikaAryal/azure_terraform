@@ -1,0 +1,6 @@
+- name: Download Open JDK
+  win_command: choco install -y openjdk8
+  register: download_result
+
+- name: Validate if Java is available
+  win_command: java -version

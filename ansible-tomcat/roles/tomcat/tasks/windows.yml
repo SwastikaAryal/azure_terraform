@@ -1,0 +1,22 @@
+---   
+- name: Install required packages
+  win_chocolatey:
+    name: unzip
+    state: present
+
+- name: Download Apache Tomcat
+  win_get_url:
+    url: "https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.23/bin/apache-tomcat-10.1.23.tar.gz"
+    dest: "C:\\temp\\apache-tomcat-10.1.23.tar.gz"
+
+- name: Extract Apache Tomcat
+  win_unzip:
+    src: "C:\\temp\\apache-tomcat-10.1.23.tar.gz"
+    dest: "C:\\tomcat8"
+    creates: "C:\\tomcat8\\apache-tomcat-10.1.23"
+
+- name: Set ownership and permissions (not applicable on Windows)
+  # This task can be omitted as Windows does not have the concept of ownership and permissions like Unix-based systems.
+
+- name: Start Tomcat service
+  win_command: "C:\\tomcat8\\apache-tomcat-10.1.23\\bin\\startup.bat"

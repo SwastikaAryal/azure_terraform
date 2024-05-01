@@ -1,0 +1,38 @@
+---
+- name: Install Apache on Debian-based systems
+  apt:
+    name: apache2
+    state: present
+    
+- name: Install required packages
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - unzip
+
+- name: Download Apache Tomcat
+  get_url:
+    url: "https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.23/bin/apache-tomcat-10.1.23.tar.gz"
+    dest: "/tmp/apache-tomcat-10.0.18.tar.gz"
+
+- name: Extract Apache Tomcat
+  become: true
+  unarchive:
+    src: "/tmp/apache-tomcat-10.0.18.tar.gz"
+    dest: "/opt/tomcat8"
+    remote_src: yes
+    creates: "/opt/tomcat8/apache-tomcat-10.0.18"
+
+- name: Set ownership and permissions
+  become: true
+  file:
+    path: "/opt/tomcat8/apache-tomcat-10.0.18"
+    state: directory
+    owner: tomcat
+    group: tomcat
+    mode: "0755"
+
+- name: Start Tomcat service
+  become: true
+  command: "/opt/tomcat8/apache-tomcat-10.0.18/bin/startup.sh"
