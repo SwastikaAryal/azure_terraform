@@ -1,0 +1,9 @@
+- name: Add limits for sonarqube user sysctl.conf
+  lineinfile:
+    path: /etc/sysctl.conf
+    line: "{{ item }}"
+  with_items:
+    - "vm.max_map_count = 524288"
+
+- name: Reboot the server
+  reboot:

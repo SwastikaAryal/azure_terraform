@@ -1,0 +1,82 @@
+#Install PostgreSQL on PostgreSQL-host
+  - name: Update packages
+    become: true
+    apt:
+      update_cache: yes
+
+  - name: Install acl package
+    apt:
+      name: acl
+      state: present
+
+  - name: Add pgdg repo to sources.list.d
+    lineinfile:
+      path: /etc/apt/sources.list.d/pgdg.list
+      line: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+      create: true
+
+  - name: Download and add PostgreSQL GPG key
+    shell: "wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null"
+
+  - name: Update apt cache
+    apt:
+      update_cache: yes
+
+  - name: Install PostgreSQL and PostgreSQL-contrib
+    apt:
+      name:
+        - postgresql-{{ postgresql_version }}
+        - postgresql-contrib-{{ postgresql_version }}
+      state: present
+
+  - name: Enable PostgreSQL service
+    systemd:
+      name: postgresql
+      enabled: yes
+
+  - name: Install psycopg2 Python library
+    apt:
+      name: python3-psycopg2
+      state: present
+
+  - name: Change PostgreSQL user password
+    ansible.builtin.user:
+      name: postgres
+      state: present
+      password: "{{ '{{ postgres_passwd }}' | password_hash('sha512') }}"
+
+  - name: Create Postgres SQL database
+    become_user: postgres
+    community.postgresql.postgresql_db:
+      name: "{{ db_name }}"
+      state: present
+
+  - name: Include secrets
+    include_vars:
+      file: secret.yml
+
+  - name: Create PostgreSQL user account for localhost
+    become_user: postgres
+    community.postgresql.postgresql_user:
+      db: "{{db_name}}"
+      name: "{{db_user}}"
+      password: "{{db_password}}"
+      priv: ALL
+
+  - name: Add sonar as owner of the database
+    become_user: postgres
+    community.postgresql.postgresql_owner:
+      db: "{{ db_name }}"
+      new_owner: sonar
+      obj_name: sonar
+      obj_type: database
+
+  - name: Grant privs to sonar user on database sonar
+    become_user: postgres
+    community.postgresql.postgresql_privs:
+      db: "{{ db_name }}"
+      state: present
+      privs: ALL
+      type: database
+      role: sonar
+      grant_option: true

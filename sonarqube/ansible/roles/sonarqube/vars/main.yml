@@ -1,0 +1,6 @@
+sonarqube_version: 9.9.0.65466
+sonarqube_zip_file: /tmp/sonarqube-9.9.0.65466.zip
+user_sonarqube: sonar
+group_sonarqube: sonar
+db_user: sonar
+db_password: sonar

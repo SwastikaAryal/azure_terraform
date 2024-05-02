@@ -1,0 +1,80 @@
+- name: Create a directory
+  file:
+    path: /home/ubuntu/sonar
+    state: directory
+    mode: 0755
+  become: true
+
+- name: Download SonarQube zip file
+  ansible.builtin.get_url:
+    url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{sonarqube_version}}.zip
+    dest: /tmp/sonarqube-{{sonarqube_version}}.zip
+
+- name: Install unzip
+  apt:
+    name: unzip
+    state: present
+
+- name: Unzip SonarQube to /opt
+  unarchive:
+    src: /tmp/sonarqube-{{sonarqube_version}}.zip
+    dest: /opt
+    remote_src: yes
+
+- name: checking if a file exists
+  stat:
+      path: "/opt/sonarqube-9.9.0.65466"
+  register: file_data
+
+- name: move the file if file exists
+  copy:
+    src: /opt/sonarqube-9.9.0.65466/
+    dest: /opt/sonarqube
+    remote_src: yes
+  when: file_data.stat.exists
+
+- name: Create Sonar group
+  group:
+    name: sonar
+    state: present
+
+- name: Create Sonar user
+  user:
+    name: sonar
+    comment: "user to run SonarQube"
+    home: /opt/sonarqube
+    group: sonar
+  become: true
+
+- name: Set ownership of SonarQube directory
+  file:
+    path: /opt/sonarqube
+    state: directory
+    owner: sonar
+    group: sonar
+    recurse: yes
+
+- name: Cleanup temporary files
+  file:
+    path: /tmp/sonarqube-{{sonarqube_version}}.zip
+    state: absent
+
+- name: update a sonar.properties file
+  template:
+    src: sonar.properties.j2
+    dest: /opt/sonarqube/conf/sonar.properties
+
+- name: Create systemd service file
+  template:
+    src: sonar.service.j2
+    dest: /etc/systemd/system/sonar.service
+
+- name: Start SonarQube service
+  systemd:
+    name: sonar
+    state: started
+
+- name: Enable SonarQube service at boot
+  systemd:
+    name: sonar
+    enabled: yes
