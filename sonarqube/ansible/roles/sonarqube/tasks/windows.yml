@@ -1,0 +1,68 @@
+---
+- name: Create Sonar directory
+  win_file:
+    path: C:\sonarqube
+    state: directory
+    mode: 0755
+
+- name: Download SonarQube zip file
+  win_get_url:
+    url: https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{sonarqube_version}}.zip
+    dest: C:\tmp\sonarqube-{{sonarqube_version}}.zip
+
+- name: Install unzip (not required for Windows)
+
+- name: Unzip SonarQube to C:\opt
+  win_unzip:
+    src: C:\tmp\sonarqube-{{sonarqube_version}}.zip
+    dest: C:\opt
+    remote_src: yes
+
+- name: Checking if a directory exists
+  win_stat:
+    path: C:\opt\sonarqube-9.9.0.65466
+  register: dir_exists
+
+- name: Move the directory if exists
+  win_copy:
+    src: C:\opt\sonarqube-9.9.0.65466\
+    dest: C:\opt\sonarqube
+    remote_src: yes
+  when: dir_exists.exists
+
+- name: Create Sonar group (not required for Windows)
+
+- name: Create Sonar user
+  win_user:
+    name: sonar
+    password: <password>
+    state: present
+
+- name: Set ownership of SonarQube directory
+  win_file:
+    path: C:\opt\sonarqube
+    owner: sonar
+    recurse: yes
+
+- name: Cleanup temporary files
+  win_file:
+    path: C:\tmp\sonarqube-{{sonarqube_version}}.zip
+    state: absent
+
+- name: Update sonar.properties file
+  win_template:
+    src: sonar.properties.j2
+    dest: C:\opt\sonarqube\conf\sonar.properties
+
+- name: Create Windows service
+  win_service:
+    name: SonarQube
+    path: C:\opt\sonarqube\bin\windows-x86-64\wrapper.exe
+    start_mode: auto
+    state: started
+
+- name: Ensure SonarQube service is enabled at boot
+  win_service:
+    name: SonarQube
+    start_mode: auto
+    state: started

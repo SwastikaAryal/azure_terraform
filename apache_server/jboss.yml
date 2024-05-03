@@ -1,0 +1,66 @@
+---
+- name: Install Java 1.7 and some basic dependencies
+  win_chocolatey:
+    name: "{{ item }}"
+    state: present
+  with_items:
+   - unzip
+   - openjdk-7-jdk
+
+- name: Download JBoss from jboss.org
+  win_get_url:
+    url: http://download.jboss.org/jbossas/7.1/jboss-as-7.1.1.Final/jboss-as-7.1.1.Final.zip
+    dest: C:\opt\jboss-as-7.1.1.Final.zip
+
+- name: Extract archive
+  win_unzip:
+    src: C:\opt\jboss-as-7.1.1.Final.zip
+    dest: C:\Program Files\jboss-as
+    creates_path: yes
+
+- name: Copying standalone.xml configuration file
+  win_copy:
+    src: standalone.xml
+    dest: C:\Program Files\jboss-as\standalone\configuration\
+  notify: restart jboss
+
+- name: Add group "jboss"
+  win_group:
+    name: jboss
+
+- name: Add user "jboss"
+  win_user:
+    name: jboss
+    password: <password>
+    groups: jboss
+    state: present
+    createhome: yes
+
+- name: Change ownership of JBoss installation
+  win_file:
+    path: C:\Program Files\jboss-as\
+    owner: jboss
+    recurse: yes
+
+- name: Copy the service script
+  win_copy:
+    src: jboss-as-standalone.bat
+    dest: C:\Program Files\jboss-as\bin\standalone.bat
+
+- name: Enable JBoss service
+  win_service:
+    name: JBoss
+    start_mode: auto
+    state: started
+
+- name: deploy firewall rules
+  win_firewall_rule:
+    name: "JBoss HTTP and HTTPS ports"
+    localport: "{{ item }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    enabled: yes
+  with_items:
+    - "{{ http_port }}"
+    - "{{ https_port }}"

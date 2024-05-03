@@ -1,0 +1,10 @@
+- name: Install Apache package
+  win_chocolatey:
+    name: apache-httpd
+    state: present
+
+- name: Start Apache service
+  win_service:
+    name: apache2
+    start_mode: auto
+    state: started
