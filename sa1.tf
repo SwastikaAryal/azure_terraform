@@ -127,3 +127,16 @@ output "metric_alert_id" {
 }
 
 
+Acceptance Criteria
+
+All security controls from the approved Excel checklist are implemented using Terraform.
+
+Identified insecure Azure configurations are remediated.
+
+Changes follow Azure security best practices and team Terraform standards.
+
+No secrets are hardcoded; secure references are used.
+
+Terraform plan/apply completes successfully with only expected changes.
+
+Code is reviewed, validated, and documented.
