@@ -1,19 +1,47 @@
-Azure Backup Configuration Hardening
+location                = "eastus"
+resource_group_name     = "rg-backup-eastus"
+effective_bv_custom_name = "bv-prod-eastus"
+datastore_type          = "VaultStore"
+redundancy              = "LocallyRedundant"
+soft_delete_state       = "Enabled"
 
-Ticket Type: Task
-Summary:
-Enable secure Azure Backup configurations via Terraform
+tags = {
+  environment = "prod"
+  owner       = "devops"
+  project     = "backup"
+}
 
-Description:
+naming_file_json_tpl = "naming.json"
 
-Review existing Azure Backup configuration
+monitoring = {
+  action_group = {
+    name            = "ag-backup-alerts"
+    short_name     = "bkpalrt"
+    webhook_receivers = ["backup-webhook"]
+  }
 
-Identify missing security controls
+  webhook_receiver = {
+    name        = "backup-webhook"
+    service_uri = "https://example.com/azure/backup/webhook"
+  }
 
-Implement recommended security settings using Terraform
+  metric_alert = {
+    name        = "backup-failure-alert"
+    scopes     = ["/subscriptions/00000000-0000-0000-0000-000000000000"]
+    description = "Alert when backup jobs fail"
 
-Acceptance Criteria:
+    criteria = {
+      metric_namespace = "Microsoft.RecoveryServices/vaults"
+      metric_name      = "BackupFailure"
+      aggregation      = "Total"
+      operator         = "GreaterThan"
+      threshold        = 0
 
-Terraform plan applies without errors
-
-Backup configuration follows Azure security best practices
+      dimension = {
+        name     = "BackupInstanceName"
+        operator = "Include"
+        values   = ["*"]
+      }
+    }
+  }
+}
