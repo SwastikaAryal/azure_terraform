@@ -1,5 +1,6 @@
 # =================================================================================================
 # File: terraform/modules/storage_account/terraform.tfvars
+# CORRECTED VERSION - Fixed monitoring block syntax
 # =================================================================================================
 
 # Global Configuration
@@ -23,14 +24,16 @@ shared_access_key_enabled       = false
 default_to_oauth_authentication = true
 
 # Customer Managed Key (CMK) Configuration
+# IMPORTANT: Replace XXXXXXXX with your actual subscription ID
 enable_cmk                      = true
 cmk_key_name                    = "storage-encryption-key"
-cmk_key_vault_id                = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-keyvault-prod/providers/Microsoft.KeyVault/vaults/kv-prod-westeurope"
-cmk_user_assigned_identity_id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-identity-prod/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-storage-cmk"
+cmk_key_vault_id                = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-keyvault-prod/providers/Microsoft.KeyVault/vaults/kv-prod-westeurope"
+cmk_user_assigned_identity_id   = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-identity-prod/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-storage-cmk"
 
 # Diagnostic Settings
+# IMPORTANT: Replace XXXXXXXX with your actual subscription ID
 create_diagnostic_settings = true
-log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-monitoring-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod-westeurope"
+log_analytics_workspace_id = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-monitoring-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod-westeurope"
 
 # Storage Properties
 queue_properties = {
@@ -63,7 +66,7 @@ share_properties = {
 
 # Naming and Tagging
 custom_name_suffix   = "data"
-naming_file_json_tpl = "./naming-template.json"
+naming_file_json_tpl = "${path.module}/naming-template.json"
 
 tags = {
   Environment  = "Production"
@@ -75,14 +78,15 @@ tags = {
 }
 
 # Network Configuration
+# IMPORTANT: Replace with your actual IPs and subnet IDs
 allowed_ips = [
   "203.0.113.0/24",  # Office Network
   "198.51.100.50"    # VPN Gateway
 ]
 
 allowed_subnet_ids = [
-  "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-data",
-  "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-app"
+  "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-data",
+  "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-app"
 ]
 
 create_private_endpoint = true
@@ -99,16 +103,16 @@ storage_management_policy = {
       }
       actions = {
         base_blob = {
-          tier_to_cool_after_days_since_modification_greater_than = 30
+          tier_to_cool_after_days_since_modification_greater_than    = 30
           tier_to_archive_after_days_since_modification_greater_than = 90
-          delete_after_days_since_modification_greater_than = 365
+          delete_after_days_since_modification_greater_than          = 365
         }
         snapshot = {
           delete_after_days_since_creation_greater_than = 90
         }
         version = {
           change_tier_to_cool_after_days_since_creation = 30
-          delete_after_days_since_creation = 90
+          delete_after_days_since_creation              = 90
         }
       }
     },
@@ -139,12 +143,12 @@ storage_management_policy = {
       }
       actions = {
         base_blob = {
-          tier_to_cool_after_days_since_modification_greater_than = 7
+          tier_to_cool_after_days_since_modification_greater_than    = 7
           tier_to_archive_after_days_since_modification_greater_than = 30
         }
         snapshot = {
-          change_tier_to_archive_after_days_since_creation = 30
-          delete_after_days_since_creation_greater_than = 180
+          change_tier_to_archive_after_days_since_creation  = 30
+          delete_after_days_since_creation_greater_than     = 180
         }
       }
     }
@@ -152,6 +156,7 @@ storage_management_policy = {
 }
 
 # Monitoring Configuration
+# FIXED: Proper syntax with all closing braces and brackets
 monitoring = {
   enabled = true
   action_group = {
@@ -160,7 +165,7 @@ monitoring = {
     webhook_receivers = [
       {
         name                    = "teams-webhook"
-        service_uri             = "https://outlook.office.com/webhook/xxxxx"
+        service_uri             = "https://outlook.office.com/webhook/REPLACE-WITH-YOUR-WEBHOOK-URL"
         use_common_alert_schema = true
       }
     ]
@@ -179,12 +184,15 @@ monitoring = {
   }
   metric_alert = {
     name        = "alert-storage-availability"
-    scopes      = [module.bmw_storage_account.id]  # This will need to be set after initial deployment
     description = "Alert when storage account availability drops below threshold"
     severity    = 2
     frequency   = "PT5M"
     window_size = "PT15M"
     enabled     = true
+    # IMPORTANT: Replace with actual storage account resource ID after first deployment
+    scopes = [
+      "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-storage-prod-westeurope/providers/Microsoft.Storage/storageAccounts/YOUR-STORAGE-ACCOUNT-NAME"
+    ]
     criteria = {
       metric_namespace = "Microsoft.Storage/storageAccounts"
       metric_name      = "Availability"
