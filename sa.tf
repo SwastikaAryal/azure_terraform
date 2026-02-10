@@ -1,212 +1,36 @@
-# =================================================================================================
-# File: terraform/modules/storage_account/terraform.tfvars
-# CORRECTED VERSION - Fixed monitoring block syntax
-# =================================================================================================
+Update Observability Pipeline: Send Logs to Loki, Traces to Jaeger, and Metrics to Prometheus
+Description (Points)
 
-# Global Configuration
-global_config = {
-  project     = "myproject"
-  environment = "prod"
-  region      = "westeurope"
-}
+Current observability setup is not fully aligned with the target monitoring stack
 
-cloud_region        = "westeurope"
-resource_group_name = "rg-storage-prod-westeurope"
+Logs, traces, and metrics need to be routed to the correct tools
 
-# Storage Account Configuration
-account_tier             = "Standard"
-account_replication_type = "GRS"
-account_kind             = "StorageV2"
+Update telemetry/export configuration so that:
 
-# Security Settings
-public_network_access_enabled   = false
-shared_access_key_enabled       = false
-default_to_oauth_authentication = true
+Logs are sent to Loki
 
-# Customer Managed Key (CMK) Configuration
-# IMPORTANT: Replace XXXXXXXX with your actual subscription ID
-enable_cmk                      = true
-cmk_key_name                    = "storage-encryption-key"
-cmk_key_vault_id                = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-keyvault-prod/providers/Microsoft.KeyVault/vaults/kv-prod-westeurope"
-cmk_user_assigned_identity_id   = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-identity-prod/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-storage-cmk"
+Traces are sent to Jaeger (instead of Azure Application Insights)
 
-# Diagnostic Settings
-# IMPORTANT: Replace XXXXXXXX with your actual subscription ID
-create_diagnostic_settings = true
-log_analytics_workspace_id = "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-monitoring-prod/providers/Microsoft.OperationalInsights/workspaces/law-prod-westeurope"
+Metrics are exposed and collected by Prometheus
 
-# Storage Properties
-queue_properties = {
-  logging = {
-    delete                = true
-    read                  = true
-    write                 = true
-    version               = "1.0"
-    retention_policy_days = 10
-  }
-}
+Replace the existing trace exporter integration with Jaeger exporter
 
-blob_properties = {
-  versioning_enabled       = true
-  change_feed_enabled      = true
-  last_access_time_enabled = true
-  delete_retention_policy = {
-    days = 30
-  }
-  container_delete_retention_policy = {
-    days = 30
-  }
-}
+Ensure all telemetry data is successfully ingested and visible in the respective platforms
 
-share_properties = {
-  retention_policy = {
-    days = 30
-  }
-}
+Validate end-to-end observability pipeline with no data loss
 
-# Naming and Tagging
-custom_name_suffix   = "data"
-naming_file_json_tpl = "${path.module}/naming-template.json"
+Document configuration and deployment changes for future maintenance
 
-tags = {
-  Environment  = "Production"
-  Project      = "DataPlatform"
-  ManagedBy    = "Terraform"
-  CostCenter   = "IT-001"
-  Owner        = "data-team@company.com"
-  Compliance   = "GDPR"
-}
+Acceptance Criteria
 
-# Network Configuration
-# IMPORTANT: Replace with your actual IPs and subnet IDs
-allowed_ips = [
-  "203.0.113.0/24",  # Office Network
-  "198.51.100.50"    # VPN Gateway
-]
+ Application logs are successfully visible in Loki with correct labels and filtering
 
-allowed_subnet_ids = [
-  "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-data",
-  "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-network-prod/providers/Microsoft.Network/virtualNetworks/vnet-prod/subnets/snet-app"
-]
+ Traces are no longer sent to Application Insights
 
-create_private_endpoint = true
+ Traces are successfully exported and searchable in Jaeger
 
-# Storage Management Policy
-storage_management_policy = {
-  rules = [
-    {
-      name    = "move-to-cool-tier"
-      enabled = true
-      filters = {
-        prefix_match = ["container1/logs"]
-        blob_types   = ["blockBlob"]
-      }
-      actions = {
-        base_blob = {
-          tier_to_cool_after_days_since_modification_greater_than    = 30
-          tier_to_archive_after_days_since_modification_greater_than = 90
-          delete_after_days_since_modification_greater_than          = 365
-        }
-        snapshot = {
-          delete_after_days_since_creation_greater_than = 90
-        }
-        version = {
-          change_tier_to_cool_after_days_since_creation = 30
-          delete_after_days_since_creation              = 90
-        }
-      }
-    },
-    {
-      name    = "delete-old-backups"
-      enabled = true
-      filters = {
-        prefix_match = ["backups/"]
-        blob_types   = ["blockBlob"]
-        match_blob_index_tag = {
-          name      = "Retention"
-          operation = "=="
-          value     = "Short"
-        }
-      }
-      actions = {
-        base_blob = {
-          delete_after_days_since_modification_greater_than = 90
-        }
-      }
-    },
-    {
-      name    = "archive-cold-data"
-      enabled = true
-      filters = {
-        prefix_match = ["archive/"]
-        blob_types   = ["blockBlob"]
-      }
-      actions = {
-        base_blob = {
-          tier_to_cool_after_days_since_modification_greater_than    = 7
-          tier_to_archive_after_days_since_modification_greater_than = 30
-        }
-        snapshot = {
-          change_tier_to_archive_after_days_since_creation  = 30
-          delete_after_days_since_creation_greater_than     = 180
-        }
-      }
-    }
-  ]
-}
+ Application metrics are available in Prometheus and can be queried
 
-# Monitoring Configuration
-# FIXED: Proper syntax with all closing braces and brackets
-monitoring = {
-  enabled = true
-  action_group = {
-    name       = "ag-storage-alerts-prod"
-    short_name = "stg-alerts"
-    webhook_receivers = [
-      {
-        name                    = "teams-webhook"
-        service_uri             = "https://outlook.office.com/webhook/REPLACE-WITH-YOUR-WEBHOOK-URL"
-        use_common_alert_schema = true
-      }
-    ]
-    email_receivers = [
-      {
-        name                    = "ops-team"
-        email_address           = "ops-team@company.com"
-        use_common_alert_schema = true
-      },
-      {
-        name                    = "security-team"
-        email_address           = "security@company.com"
-        use_common_alert_schema = true
-      }
-    ]
-  }
-  metric_alert = {
-    name        = "alert-storage-availability"
-    description = "Alert when storage account availability drops below threshold"
-    severity    = 2
-    frequency   = "PT5M"
-    window_size = "PT15M"
-    enabled     = true
-    # IMPORTANT: Replace with actual storage account resource ID after first deployment
-    scopes = [
-      "/subscriptions/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/resourceGroups/rg-storage-prod-westeurope/providers/Microsoft.Storage/storageAccounts/YOUR-STORAGE-ACCOUNT-NAME"
-    ]
-    criteria = {
-      metric_namespace = "Microsoft.Storage/storageAccounts"
-      metric_name      = "Availability"
-      aggregation      = "Average"
-      operator         = "LessThan"
-      threshold        = 99.9
-      dimension = {
-        name     = "ApiName"
-        operator = "Include"
-        values   = ["*"]
-      }
-    }
-  }
-}
+ No major telemetry gaps or performance degradation observed after migration
 
-# Security Configuration
-enable_defender_for_storage = true
+ Configuration changes are documented for future reference
