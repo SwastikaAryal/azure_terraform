@@ -2,6 +2,7 @@ Write-Host "======================================="
 Write-Host " Installing Grafana Agent on Windows VM"
 Write-Host "======================================="
 
+
 # Variables
 $version = "0.41.0"
 $downloadUrl = "https://github.com/grafana/agent/releases/download/v$version/grafana-agent-windows-amd64.zip"
