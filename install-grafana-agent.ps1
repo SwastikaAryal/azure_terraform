@@ -1,51 +1,37 @@
-Write-Host "======================================="
-Write-Host " Installing Grafana Agent on Windows VM"
-Write-Host "======================================="
+Write-Host "Installing Grafana Agent..."
 
+$ErrorActionPreference = "Stop"
 
-# Variables
-$version = "0.41.0"
-$downloadUrl = "https://github.com/grafana/agent/releases/download/v$version/grafana-agent-windows-amd64.zip"
-$installDir = "C:\GrafanaAgent"
+$tempDir = "$env:TEMP\GrafanaAgent"
+$zipName = "grafana-agent-flow-installer.exe.zip"
+$zipPath = "$tempDir\$zipName"
+$extractDir = "$tempDir\extract"
+$downloadUrl = "https://github.com/grafana/agent/releases/latest/download/$zipName"
 
-# Step 1: Create install directory
-Write-Host "Step 1: Creating install directory..."
-New-Item -ItemType Directory -Force -Path $installDir
+# Create folders
+New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
 
-# Step 2: Download Grafana Agent zip
-Write-Host "Step 2: Downloading Grafana Agent..."
-Invoke-WebRequest -Uri $downloadUrl -OutFile "$installDir\grafana-agent.zip"
+# Download
+Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
 
-# Step 3: Extract zip
-Write-Host "Step 3: Extracting..."
-Expand-Archive -Path "$installDir\grafana-agent.zip" -DestinationPath $installDir -Force
+if (!(Test-Path $zipPath)) {
+    Write-Host "Download failed!"
+    exit 1
+}
 
-# Step 4: Create config file
-Write-Host "Step 4: Creating config file..."
+# Extract
+Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
-$config = @"
-server:
-  log_level: info
+# Find installer
+$installer = Get-ChildItem -Path $extractDir -Filter "*.exe" | Select-Object -First 1
 
-metrics:
-  global:
-    scrape_interval: 15s
+if (!$installer) {
+    Write-Host "Installer not found!"
+    exit 1
+}
 
-  configs:
-    - name: default
-      scrape_configs:
-        - job_name: windows
-          static_configs:
-            - targets: ["localhost:12345"]
-"@
+# Install silently
+Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait
 
-$config | Out-File -Encoding utf8 "$installDir\agent.yaml"
-
-# Step 5: Run Grafana Agent
-Write-Host "Step 5: Starting Grafana Agent..."
-Start-Process -NoNewWindow -FilePath "$installDir\grafana-agent.exe" `
-  -ArgumentList "--config.file=$installDir\agent.yaml"
-
-Write-Host "======================================="
-Write-Host " Grafana Agent Started Successfully!"
-Write-Host "======================================="
+Write-Host "Grafana Agent Installed Successfully!"
