@@ -1,9 +1,21 @@
-# Create the destination folder first
-New-Item -ItemType Directory -Path "C:\GrafanaAgent" -Force
+Title:
 
-# Set the download URL explicitly
-$downloadUrl = "https://github.com/grafana/alloy/releases/latest/download/alloy-installer-windows-amd64.exe"
+Create Script to Install Grafana Agent on Azure VMs
 
-# Fix TLS and download
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri $downloadUrl -OutFile "C:\GrafanaAgent\grafana-agent.zip" -Verbose
+Description:
+
+Create an automated script to install and configure the Grafana Agent on Azure Virtual Machines. The script should support execution via pipeline and Terraform, ensure the agent service is running, and handle re-runs safely (idempotent).
+
+Acceptance Criteria:
+
+Script installs Grafana Agent successfully on Azure VM
+
+Agent is configured with required settings
+
+Service starts automatically and is running
+
+Script is idempotent
+
+Can be executed via pipeline and/or Terraform
+
+Basic documentation is provided
