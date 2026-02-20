@@ -1,37 +1,30 @@
-Write-Host "Installing Grafana Agent..."
+Write-Host "======================================="
+Write-Host " Installing Grafana Alloy (Windows VM)"
+Write-Host "======================================="
 
 $ErrorActionPreference = "Stop"
 
-$tempDir = "$env:TEMP\GrafanaAgent"
-$zipName = "grafana-agent-flow-installer.exe.zip"
-$zipPath = "$tempDir\$zipName"
-$extractDir = "$tempDir\extract"
-$downloadUrl = "https://github.com/grafana/agent/releases/latest/download/$zipName"
+# Variables
+$downloadUrl = "https://github.com/grafana/alloy/releases/latest/download/grafana-alloy-installer.exe"
+$installerPath = "$env:TEMP\grafana-alloy-installer.exe"
 
-# Create folders
-New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+# Step 1: Download installer
+Write-Host "Step 1: Downloading Grafana Alloy..."
+Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
 
-# Download
-Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
-
-if (!(Test-Path $zipPath)) {
-    Write-Host "Download failed!"
+if (!(Test-Path $installerPath)) {
+    Write-Host "ERROR: Download failed!"
     exit 1
 }
 
-# Extract
-Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+# Step 2: Run installer silently
+Write-Host "Step 2: Installing Alloy..."
+Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
 
-# Find installer
-$installer = Get-ChildItem -Path $extractDir -Filter "*.exe" | Select-Object -First 1
+# Step 3: Verify service
+Write-Host "Step 3: Verifying Grafana Alloy service..."
+Get-Service grafana-alloy
 
-if (!$installer) {
-    Write-Host "Installer not found!"
-    exit 1
-}
-
-# Install silently
-Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait
-
-Write-Host "Grafana Agent Installed Successfully!"
+Write-Host "======================================="
+Write-Host " Grafana Alloy installation completed!"
+Write-Host "======================================="
