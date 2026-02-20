@@ -10,3 +10,4 @@ Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
 Write-Host "Grafana Alloy installed successfully!"
 
 [Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; .\install-grafana-agent.ps1
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
