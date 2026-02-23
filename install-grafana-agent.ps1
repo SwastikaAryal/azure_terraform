@@ -1,14 +1,15 @@
+Write-Host "Installing Grafana Alloy..."
+
+$downloadUrl = "https://github.com/grafana/alloy/releases/latest/download/alloy-installer-windows-amd64.exe"
+$installerPath = "$env:TEMP\alloy-installer.exe"
+
+# Force TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$downloadUrl = "https://github.com/grafana/alloy/releases/latest/download/grafana-alloy-installer.exe"
-$installerPath = "$env:TEMP\grafana-alloy-installer.exe"
+# Download installer
+Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath
 
-Write-Host "Downloading Grafana Alloy..."
-Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
-
+# Silent install
 Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
-Write-Host "Grafana Alloy installed successfully!"
 
-[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; .\install-grafana-agent.ps1
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-winget install GrafanaLabs.Alloy --source winget --accept-source-agreements --accept-package-agreements
+Write-Host "Grafana Alloy installed successfully."
