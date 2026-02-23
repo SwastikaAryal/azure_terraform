@@ -1,0 +1,17 @@
+Join Azure VM to Domain
+
+Description:
+
+Join the Azure VM <VM_NAME> in resource group <RESOURCE_GROUP> to the example.local Active Directory domain using service account domainjoinuser. Ensure network connectivity to domain controllers and proper DNS configuration.
+
+Acceptance Criteria:
+
+VM is joined to the domain.
+
+VM appears in AD Computers.
+
+Domain users can log in.
+
+DNS resolves the domain correctly.
+
+Steps are documented in the ticket.
