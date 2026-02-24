@@ -53,5 +53,6 @@ Get-Module -ListAvailable | Where-Object Name -like "*ActiveDirectory*"
 
 Install-WindowsFeature -Name RSAT-AD-PowerShell
 
-
+# Run as Administrator
+Invoke-WebRequest -Uri "https://github.com/Azure-Samples/azure-files-samples/releases/download/v0.2.9/AzFilesHybrid.zip" -OutFile "C:\AzFilesHybrid.zip"
 
