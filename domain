@@ -11,3 +11,5 @@ $user = "DOMAIN\username"
 
 # Check if AD drive exists
 Get-PSDrive | Where-Object { $_.Provider -like "*ActiveDirectory*" }
+
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root
