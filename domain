@@ -1,0 +1,10 @@
+# Get ACL on a specific OU and filter for a user
+$ou = "OU=YourOU,DC=domain,DC=com"
+$user = "DOMAIN\username"
+
+(Get-Acl "AD:$ou").Access | Where-Object { $_.IdentityReference -eq $user }
+
+
+# Look for the "Create Computer Objects" right
+(Get-Acl "AD:OU=YourOU,DC=domain,DC=com").Access | 
+  Where-Object { $_.IdentityReference -like "*username*" -and $_.ActiveDirectoryRights -match "CreateChild" }
