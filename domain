@@ -44,3 +44,8 @@ Join-AzStorageAccountForAuth `
     -StorageAccountName "fsamccgstprivatebmw" `
     -DomainAccountType "ComputerAccount" `
     -OrganizationalUnitDistinguishedName "OU=Server,OU=SC_AI_Cloud,OU=Resources,DC=fsam,DC=americas,DC=bim,DC=corp"
+
+Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
+
+Get-WindowsCapability -Online | Where-Object Name -like "Rsat.ActiveDirectory*"
+
