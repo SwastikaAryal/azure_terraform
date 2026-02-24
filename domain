@@ -51,4 +51,7 @@ Get-WindowsCapability -Online | Where-Object Name -like "Rsat.ActiveDirectory*"
 
 Get-Module -ListAvailable | Where-Object Name -like "*ActiveDirectory*"
 
+Install-WindowsFeature -Name RSAT-AD-PowerShell
+
+
 
