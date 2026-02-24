@@ -8,3 +8,6 @@ $user = "DOMAIN\username"
 # Look for the "Create Computer Objects" right
 (Get-Acl "AD:OU=YourOU,DC=domain,DC=com").Access | 
   Where-Object { $_.IdentityReference -like "*username*" -and $_.ActiveDirectoryRights -match "CreateChild" }
+
+# Check if AD drive exists
+Get-PSDrive | Where-Object { $_.Provider -like "*ActiveDirectory*" }
