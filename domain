@@ -49,3 +49,6 @@ Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
 
 Get-WindowsCapability -Online | Where-Object Name -like "Rsat.ActiveDirectory*"
 
+Get-Module -ListAvailable | Where-Object Name -like "*ActiveDirectory*"
+
+
