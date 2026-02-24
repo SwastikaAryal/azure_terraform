@@ -8,8 +8,39 @@ $user = "DOMAIN\username"
 # Look for the "Create Computer Objects" right
 (Get-Acl "AD:OU=YourOU,DC=domain,DC=com").Access | 
   Where-Object { $_.IdentityReference -like "*username*" -and $_.ActiveDirectoryRights -match "CreateChild" }
+#######################
+Import-Module ActiveDirectory
+
+$ou = "OU=Server,OU=SC_AI_Cloud,OU=Resources,DC=fsam,DC=americas,DC=bim,DC=corp"
+
+# Check your permissions on the OU
+(Get-Acl "AD:$ou").Access | Where-Object { 
+    $_.IdentityReference -like "*$env:USERNAME*" 
+} | Select-Object IdentityReference, ActiveDirectoryRights, AccessControlType
+
+###################
 
 # Check if AD drive exists
 Get-PSDrive | Where-Object { $_.Provider -like "*ActiveDirectory*" }
 
 Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root
+
+# Install Azure PowerShell module
+Install-Module -Name Az -Force -AllowClobber
+
+# Download AzFilesHybrid from:
+# https://github.com/Azure-Samples/azure-files-samples/releases
+# Extract the zip to C:\AzFilesHybrid
+
+cd C:\AzFilesHybrid
+Import-Module .\AzFilesHybrid.psd1
+
+# Login to Azure
+Connect-AzAccount
+
+# Domain join the storage account to your on-prem AD
+Join-AzStorageAccountForAuth `
+    -ResourceGroupName "your-resource-group" `
+    -StorageAccountName "fsamccgstprivatebmw" `
+    -DomainAccountType "ComputerAccount" `
+    -OrganizationalUnitDistinguishedName "OU=Server,OU=SC_AI_Cloud,OU=Resources,DC=fsam,DC=americas,DC=bim,DC=corp"
