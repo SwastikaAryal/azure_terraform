@@ -1,0 +1,24 @@
+# ============================================
+# STEP 1 - Force TLS 1.2
+# ============================================
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# ============================================
+# STEP 2 - Install NuGet Provider
+# ============================================
+Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+
+# ============================================
+# STEP 3 - Manually Update PowerShellGet
+# ============================================
+Save-Module -Name PowerShellGet -Path "C:\Temp\PSGet" -Repository PSGallery
+Save-Module -Name PackageManagement -Path "C:\Temp\PSGet" -Repository PSGallery
+
+# Copy to correct location
+Copy-Item "C:\Temp\PSGet\PowerShellGet\*" `
+    "C:\Program Files\WindowsPowerShell\Modules\PowerShellGet\" `
+    -Recurse -Force
+
+Copy-Item "C:\Temp\PSGet\PackageManagement\*" `
+    "C:\Program Files\WindowsPowerShell\Modules\PackageManagement\" `
+    -Recurse -Force
