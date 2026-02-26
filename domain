@@ -1,5 +1,5 @@
 Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-Install-Module -Name PowerShellGet -Force -AllowClobber
+Install-Module -Name Az -AllowClobber -Scope AllUsers -Force
 
 
 # Get ACL on a specific OU and filter for a user
