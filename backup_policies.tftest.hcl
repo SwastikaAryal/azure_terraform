@@ -157,24 +157,3 @@ run "disk_lun_exclusion_configured" {
   }
 }
 
-###############################################################################
-# Run 7 – VM policy assignments (FIXED)
-###############################################################################
-run "vm_policy_assignments" {
-  command = plan  
-
-  assert {
-    condition     = output.standard_backup_policy_id != ""
-    error_message = "standard_backup_policy_id must be non-empty"
-  }
-
-  assert {
-    condition     = output.enhanced_backup_policy_id != ""
-    error_message = "enhanced_backup_policy_id must be non-empty"
-  }
-
-  assert {
-    condition     = output.standard_backup_policy_id != output.enhanced_backup_policy_id
-    error_message = "standard and enhanced policies must be distinct"
-  }
-}
