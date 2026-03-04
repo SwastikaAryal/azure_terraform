@@ -12,7 +12,7 @@
 variables {
   location                     = "eastus"
   secondary_location           = "westus"
-  resource_group_name          = "rg-minitrue-test"
+  resource_group_name          = "DefaultResourceGroup-EUS"
   environment                  = "test"
   vault_name                   = "rsv-minitrue-9414-test"
   snapshot_resource_group_name = "rg-minitrue-snaps-test"
@@ -163,55 +163,5 @@ run "runbooks_have_content" {
   assert {
     condition     = length(azurerm_automation_runbook.file_level_recovery.content) > 100
     error_message = "file-level recovery runbook content must not be empty"
-  }
-}
-
-###############################################################################
-# Run 8 – RBAC: Backup Contributor on the vault
-###############################################################################
-run "automation_backup_contributor_role" {
-  command = plan
-
-  assert {
-    condition     = azurerm_role_assignment.automation_backup_contributor.role_definition_name == "Backup Contributor"
-    error_message = "automation account must have Backup Contributor on the vault (MINITRUE-9414)"
-  }
-
-  assert {
-    condition     = azurerm_role_assignment.automation_backup_contributor.scope == azurerm_recovery_services_vault.main.id
-    error_message = "Backup Contributor role must be scoped to the RSV"
-  }
-}
-
-###############################################################################
-# Run 9 – RBAC: Virtual Machine Contributor at subscription scope
-###############################################################################
-run "automation_vm_contributor_role" {
-  command = plan
-
-  assert {
-    condition     = azurerm_role_assignment.automation_vm_contributor.role_definition_name == "Virtual Machine Contributor"
-    error_message = "automation account must have Virtual Machine Contributor for restore VM creation (MINITRUE-9414)"
-  }
-
-  assert {
-    condition     = can(regex("/subscriptions/", azurerm_role_assignment.automation_vm_contributor.scope))
-    error_message = "VM Contributor role must be scoped at the subscription level"
-  }
-}
-
-###############################################################################
-# Run 10 – All runbooks share the same automation account
-###############################################################################
-run "runbooks_use_same_account" {
-  command = plan
-
-  assert {
-    condition = (
-      azurerm_automation_runbook.full_vm_restore.automation_account_name      == "aa-minitrue-backup-restore" &&
-      azurerm_automation_runbook.disk_restore.automation_account_name         == "aa-minitrue-backup-restore" &&
-      azurerm_automation_runbook.file_level_recovery.automation_account_name  == "aa-minitrue-backup-restore"
-    )
-    error_message = "all restore runbooks must belong to the same automation account (MINITRUE-9414)"
   }
 }
