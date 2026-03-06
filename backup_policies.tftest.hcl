@@ -157,3 +157,34 @@ run "disk_lun_exclusion_configured" {
   }
 }
 
+###############################################################################
+# Run 7 – Apply validation
+###############################################################################
+run "apply_backup_policy_validation" {
+  command = apply
+
+  assert {
+    condition     = azurerm_recovery_services_vault.main.id != ""
+    error_message = "Recovery Services Vault must be created during apply"
+  }
+
+  assert {
+    condition     = azurerm_backup_policy_vm.standard.id != ""
+    error_message = "Standard backup policy must be created"
+  }
+
+  assert {
+    condition     = azurerm_backup_policy_vm.enhanced.id != ""
+    error_message = "Enhanced backup policy must be created"
+  }
+
+  assert {
+    condition     = azurerm_backup_policy_vm.standard.instant_restore_retention_days == 5
+    error_message = "Standard instant restore value must persist after apply"
+  }
+
+  assert {
+    condition     = azurerm_backup_policy_vm.enhanced.instant_restore_retention_days == 7
+    error_message = "Enhanced instant restore value must persist after apply"
+  }
+}
