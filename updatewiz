@@ -1,0 +1,13 @@
+Go to Azure Portal.
+
+Open Virtual Machines and select your VM.
+
+Click Extensions + Applications.
+
+Select the extension you want to update.
+
+Click Update/Edit and choose the latest version (or enable auto-upgrade).
+
+Click Save.
+
+✅ Azure will then update the extension to the latest version.
