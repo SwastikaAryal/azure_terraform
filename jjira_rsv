@@ -1,0 +1,22 @@
+Enhance Terraform Module for Azure Recovery Services Vault
+
+Description:
+Enhance the Terraform module to provision and manage an Azure Recovery Services Vault with additional capabilities such as site recovery, disk backup policies, snapshot management, private endpoints, monitoring alerts, and diagnostic settings. The module should follow the common naming and tagging standards and allow optional features to be enabled through variables.
+
+Acceptance Criteria:
+
+Recovery Services Vault is created using Terraform.
+
+Naming and tags follow the common module standards.
+
+Site Recovery resources are created when enabled.
+
+Disk backup vault, policies, and backup instances can be configured.
+
+Private Endpoint can be created for secure access.
+
+Monitoring alerts for backup and restore health are configured.
+
+Diagnostic settings can be enabled for logging.
+
+Module runs successfully with terraform init, validate, and plan.
