@@ -1,0 +1,496 @@
+Enhanced Azure VM Terraform Module – Demo Documentation
+1. Overview
+
+This Terraform module provisions secure, enterprise-grade Azure Virtual Machines with advanced capabilities including:
+
+Disk encryption
+
+Monitoring and diagnostics
+
+Backup and disaster recovery
+
+Snapshot-based recovery
+
+Network security
+
+Identity management
+
+Policy compliance
+
+High availability
+
+VM lifecycle management
+
+The module supports both Windows and Linux VMs and integrates with Azure Monitor, Log Analytics, Recovery Services Vault, and Azure Policy.
+
+Step-by-Step Architecture Flow
+Step 1 – Common Configuration
+
+The module first loads global configuration and naming standards.
+
+What it does
+
+Imports shared configuration
+
+Applies global tagging policy
+
+Enforces consistent naming convention
+
+Resource
+
+module "common"
+
+Benefits
+
+Standardized infrastructure
+
+Consistent tagging for cost tracking
+
+Naming alignment across environments
+
+Step 2 – Network Discovery
+
+The module fetches the existing Virtual Network and Subnet.
+
+Resources
+
+azurerm_virtual_network
+
+azurerm_subnet
+
+Purpose
+
+Allows the VM to be deployed into an existing enterprise network.
+
+Benefits
+
+Network reuse
+
+Integration with existing infrastructure
+
+Security boundary compliance
+
+Step 3 – Network Interface Creation
+
+Creates the Network Interface (NIC) for the VM.
+
+Resource
+
+azurerm_network_interface
+
+Features
+
+Accelerated networking
+
+Static or dynamic private IP
+
+IP forwarding support
+
+Benefits
+
+High network performance
+
+Flexible networking configuration
+
+Step 4 – Network Security Group
+
+The module creates or attaches an NSG.
+
+Resources
+
+azurerm_network_security_group
+
+azurerm_network_security_rule
+
+azurerm_network_interface_security_group_association
+
+Features
+
+Dynamic rule creation
+
+Support for existing NSG
+
+Priority-based security rules
+
+Benefits
+
+Controlled network access
+
+Secure inbound traffic filtering
+
+Step 5 – User Assigned Identity
+
+Creates or references a Managed Identity.
+
+Resources
+
+azurerm_user_assigned_identity
+
+data.azurerm_user_assigned_identity
+
+Benefits
+
+Secure authentication
+
+No stored credentials
+
+Enables Key Vault access
+
+Step 6 – Disk Encryption Setup
+
+Implements customer-managed disk encryption.
+
+Resources
+
+azurerm_key_vault_key
+
+azurerm_disk_encryption_set
+
+azurerm_role_assignment
+
+Features
+
+Key Vault integration
+
+Automatic key rotation
+
+User-assigned identity authentication
+
+Benefits
+
+Data protection
+
+Compliance with security policies
+
+Step 7 – Data Disk Provisioning
+
+Creates and attaches data disks to the VM.
+
+Resources
+
+azurerm_managed_disk
+
+azurerm_virtual_machine_data_disk_attachment
+
+Features
+
+Flexible disk creation options
+
+Supported disk creation methods:
+
+Option	Description
+Empty	Create a new empty disk
+Copy	Copy from an existing disk
+Restore	Restore from snapshot
+FromImage	Create from VM image
+Upload	Upload disk data
+Advanced Disk Features
+
+On-demand bursting
+
+Performance tier selection
+
+Network access control
+
+Trusted launch compatibility
+
+Benefits
+
+High flexibility
+
+Optimized disk performance
+
+Step 8 – Virtual Machine Deployment
+
+The module supports both:
+
+Windows Virtual Machines
+
+Linux Virtual Machines
+
+Resources
+
+module.windows_vm
+
+module.linux_vm
+
+Core VM Features
+
+VM size configuration
+
+OS disk management
+
+Custom images
+
+Boot diagnostics
+
+Managed identities
+
+Step 9 – Trusted Launch Security
+
+Enhances VM security with Trusted Launch.
+
+Features
+
+Secure Boot
+
+Virtual TPM
+
+Secure VM disk encryption
+
+Benefits
+
+Protection against rootkits
+
+Firmware-level security
+
+Step 10 – Monitoring Integration
+
+Integrates VMs with Azure Monitor and Log Analytics.
+
+Resources
+
+Azure Monitor Agent
+
+Data Collection Rule
+
+Diagnostic Settings
+
+Monitoring Capabilities
+
+For Windows:
+
+Performance metrics
+
+Windows event logs
+
+Dependency tracking
+
+For Linux:
+
+Syslog collection
+
+VM metrics
+
+performance monitoring
+
+Benefits
+
+Full observability
+
+Centralized logging
+
+Step 11 – Backup with Recovery Services Vault
+
+Adds automated VM backup.
+
+Resource
+
+module.recovery_services_vault
+
+Backup Features
+
+Daily backups
+
+90-day retention
+
+Diagnostic integration
+
+Important Fix
+
+Previously:
+
+vm_id = local.calculated_vm_name
+
+Now fixed to:
+
+vm_id = local.virtual_machine_id
+Benefit
+
+Ensures backup targets the actual VM resource.
+
+Step 12 – Disk Snapshots
+
+Adds point-in-time recovery using snapshots.
+
+OS Disk Snapshot
+
+Resource:
+azurerm_snapshot.os_disk
+
+Data Disk Snapshots
+
+Resource:
+azurerm_snapshot.data_disk
+
+Features
+
+Incremental snapshots
+
+Snapshot tagging
+
+Snapshot for every data disk
+
+Benefits
+
+Fast recovery
+
+Backup redundancy
+
+Step 13 – Azure Site Recovery (Disaster Recovery)
+
+Installs ASR Mobility Service extension.
+
+Resources
+
+Windows extension
+
+Linux extension
+
+Benefits
+
+Disaster recovery replication
+
+Cross-region failover capability
+
+Step 14 – Azure Policy Compliance
+
+Installs Guest Configuration extension.
+
+Purpose
+
+Allows Azure Policy to audit and enforce configurations inside VMs.
+
+Benefits
+
+Security compliance
+
+Governance enforcement
+
+Step 15 – Private Disk Access
+
+Adds private network access to managed disks.
+
+Resource
+
+azurerm_disk_access
+
+Benefits
+
+Prevents public disk exposure
+
+Improved security posture
+
+Step 16 – VM Availability Monitoring
+
+Creates an availability alert.
+
+Resource
+
+azurerm_monitor_metric_alert
+
+Trigger
+
+Alert when:
+
+VM availability < 1
+Benefits
+
+Immediate notification of VM outages
+
+Step 17 – Automatic Password Generation
+
+If no password is provided:
+
+Terraform generates one using:
+
+random_password
+
+Benefits
+
+Secure credential creation
+
+Eliminates weak passwords
+
+Key Enhancements Added in This Module
+Security Improvements
+
+Disk encryption with Key Vault
+
+Trusted Launch (Secure Boot + vTPM)
+
+Guest configuration policy compliance
+
+Private disk access
+
+Backup & Recovery
+
+Recovery Services Vault integration
+
+OS disk snapshots
+
+Data disk snapshots
+
+Azure Site Recovery support
+
+Monitoring
+
+Azure Monitor Agent
+
+Log Analytics integration
+
+Dependency agent
+
+Diagnostic settings
+
+Availability alerts
+
+Disk Management Enhancements
+
+Multiple disk creation methods
+
+Performance tiers
+
+On-demand bursting
+
+Disk network access policy
+
+Infrastructure Flexibility
+
+Support for existing NSG
+
+Placement options:
+
+Availability Set
+
+Dedicated Host
+
+Proximity Placement Group
+
+Lifecycle Management
+
+Termination notifications
+
+Hibernation support
+
+Automatic patching
+
+OS image notifications
+
+Final Architecture Outcome
+
+After deployment the module provides:
+
+Fully configured Azure Virtual Machine
+
+Secure network connectivity
+
+Encrypted disks
+
+Automated monitoring
+
+Backup and recovery
+
+Policy compliance
+
+Disaster recovery readiness
