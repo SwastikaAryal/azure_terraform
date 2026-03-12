@@ -1,0 +1,148 @@
+# Enhanced Features Added to Azure Recovery Services Terraform Module
+
+## Overview
+
+This document highlights the **new features that were added to the Azure Recovery Services Terraform module** as part of the enhancement work. The purpose of these additions is to expand the module’s capabilities beyond basic backup configuration and support more **enterprise-grade disaster recovery, security, and backup management features**.
+
+---
+
+# Features Added
+
+## 1. Azure Site Recovery (ASR) Integration
+
+Support for **Azure Site Recovery** has been added to enable disaster recovery capabilities for virtual machines.
+
+### Capabilities Added
+
+* Creation of **ASR Fabric**
+* **Protection Containers**
+* **Replication Policies**
+* **Protection Container Mapping**
+* **Replicated VM configuration**
+* **Network Mapping**
+
+### Benefit
+
+This enables **cross-region VM replication**, allowing workloads to fail over to a secondary region in case of a disaster.
+
+---
+
+# 2. Managed Disk Backup Using Data Protection Backup Vault
+
+Support has been added for **Azure Data Protection Backup Vault** to protect managed disks.
+
+### Capabilities Added
+
+* Snapshot-based backup policies
+* Disk backup configuration
+* Retention management for snapshots
+
+### Benefit
+
+Provides an alternative backup mechanism for **managed disks using snapshots**, which is useful for faster recovery scenarios.
+
+---
+
+# 3. Tiering Support in VM Backup Policies
+
+Backup policies for virtual machines now support **tiering options**.
+
+### Capabilities Added
+
+* Lifecycle management for backup data
+* Ability to move backups across storage tiers
+
+### Benefit
+
+* Reduces backup storage costs
+* Enables long-term backup retention strategies
+
+---
+
+# 4. Workload Backup Support (SQL & SAP HANA)
+
+The module now supports **application-level backups for workloads running inside Azure Virtual Machines**.
+
+### Supported Workloads
+
+* **SQL Server on Azure VM**
+* **SAP HANA on Azure VM**
+
+### Capabilities Added
+
+* Workload backup policies
+* Backup protection configuration for supported databases
+
+### Benefit
+
+Allows organizations to manage **database backups directly through the Recovery Services Vault**.
+
+---
+
+# 5. Enhanced Soft Delete Protection
+
+Soft delete configuration has been enhanced to allow **configurable retention policies**.
+
+### Capabilities Added
+
+* Soft delete enablement
+* Configurable soft delete retention duration
+
+### Benefit
+
+Protects backup data from **accidental or malicious deletion** and helps meet compliance requirements.
+
+---
+
+# 6. Vault Resource Guard Protection
+
+Support has been added for **Azure Resource Guard** to protect critical vault operations.
+
+### Capabilities Added
+
+Protection for sensitive operations such as:
+
+* Backup deletion
+* Vault deletion
+* Backup policy modification
+
+### Benefit
+
+Adds an **extra layer of security** by preventing unauthorized or accidental destructive actions.
+
+---
+
+# 7. Private Endpoint Support
+
+The module now supports **Private Endpoints for the Recovery Services Vault**.
+
+### Capabilities Added
+
+* Private endpoint configuration
+* Private network access to the vault
+
+### Benefit
+
+* Restricts vault access to private networks
+* Improves overall security posture
+* Eliminates exposure to the public internet
+
+---
+
+# Summary of Added Features
+
+| Feature              | Description                        | Benefit                                |
+| -------------------- | ---------------------------------- | -------------------------------------- |
+| Azure Site Recovery  | Cross-region VM replication        | Disaster recovery capability           |
+| Managed Disk Backup  | Snapshot-based disk backup         | Faster disk recovery                   |
+| Backup Tiering       | Lifecycle management for backups   | Reduced storage cost                   |
+| Workload Backup      | SQL & SAP HANA backup              | Database-level protection              |
+| Enhanced Soft Delete | Configurable retention             | Protection against accidental deletion |
+| Resource Guard       | Protects critical vault operations | Security and compliance                |
+| Private Endpoints    | Secure vault access                | Network isolation                      |
+
+---
+
+# Conclusion
+
+The enhancements significantly expand the capabilities of the Terraform module by introducing **disaster recovery, advanced backup strategies, improved security, and network isolation features**. These additions allow the module to support **enterprise backup and recovery scenarios in Azure environments**.
