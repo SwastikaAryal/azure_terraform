@@ -1,0 +1,377 @@
+h1. Enhanced Azure VM Terraform Module – Demo Documentation
+
+h2. 1. Overview
+This Terraform module provisions secure, enterprise-grade Azure Virtual Machines with advanced capabilities:
+
+Disk encryption
+
+Monitoring and diagnostics
+
+Backup and disaster recovery
+
+Snapshot-based recovery
+
+Network security
+
+Identity management
+
+Policy compliance
+
+High availability
+
+VM lifecycle management
+
+Supported OS: Windows and Linux
+Integrations: Azure Monitor, Log Analytics, Recovery Services Vault, Azure Policy
+
+h2. 2. Step-by-Step Architecture Flow
+
+h3. Step 1 – Common Configuration
+Resource: module "common"
+
+Functionality:
+
+Imports shared global configuration
+
+Applies standard tags
+
+Ensures consistent naming
+
+Benefits:
+
+Standardized infrastructure
+
+Cost tracking through tags
+
+Naming alignment across environments
+
+h3. Step 2 – Network Discovery
+Resources:
+
+azurerm_virtual_network
+
+azurerm_subnet
+
+Functionality:
+
+Fetches existing Virtual Network and Subnet for VM deployment
+
+Benefits:
+
+Network reuse
+
+Integration with enterprise network
+
+Security boundary compliance
+
+h3. Step 3 – Network Interface
+Resource: azurerm_network_interface
+
+Features:
+
+Accelerated networking
+
+Static or dynamic private IP
+
+IP forwarding support
+
+Benefits:
+
+High network performance
+
+Flexible networking configuration
+
+h3. Step 4 – Network Security Group
+Resources:
+
+azurerm_network_security_group
+
+azurerm_network_security_rule
+
+azurerm_network_interface_security_group_association
+
+Features:
+
+Dynamic rule creation
+
+Support for existing NSG
+
+Priority-based rules
+
+Benefits:
+
+Controlled network access
+
+Secure inbound traffic
+
+h3. Step 5 – User Assigned Identity
+Resources:
+
+azurerm_user_assigned_identity
+
+data.azurerm_user_assigned_identity
+
+Functionality:
+
+Creates or references a Managed Identity
+
+Benefits:
+
+Secure authentication
+
+No credentials stored
+
+Key Vault access enabled
+
+h3. Step 6 – Disk Encryption Setup
+Resources:
+
+azurerm_key_vault_key
+
+azurerm_disk_encryption_set
+
+azurerm_role_assignment
+
+Features:
+
+Key Vault integration
+
+Automatic key rotation
+
+Managed Identity authentication
+
+Benefits:
+
+Data protection
+
+Compliance with security policies
+
+h3. Step 7 – Data Disk Provisioning
+Resources:
+
+azurerm_managed_disk
+
+azurerm_virtual_machine_data_disk_attachment
+
+Disk Creation Options:
+
+|| Option || Description ||
+| Empty | New empty disk |
+| Copy | Copy from existing disk |
+| Restore | Restore from snapshot |
+| FromImage | Create from VM image |
+| Upload | Upload disk data |
+
+Advanced Features:
+
+On-demand bursting
+
+Performance tier selection
+
+Network access control
+
+Trusted launch compatibility
+
+Benefits:
+
+Flexible disk management
+
+Optimized performance
+
+h3. Step 8 – Virtual Machine Deployment
+Modules:
+
+module.windows_vm
+
+module.linux_vm
+
+Features:
+
+VM size configuration
+
+OS disk management
+
+Managed identities
+
+Custom images
+
+Boot diagnostics
+
+h3. Step 9 – Trusted Launch Security
+
+Features:
+
+Secure Boot
+
+Virtual TPM
+
+Secure VM disk encryption
+
+Benefits:
+
+Protection against rootkits
+
+Firmware-level security
+
+h3. Step 10 – Monitoring Integration
+Resources:
+
+Azure Monitor Agent
+
+Data Collection Rule
+
+Diagnostic Settings
+
+Capabilities:
+
+Windows:
+
+Performance metrics
+
+Event logs
+
+Dependency tracking
+
+Linux:
+
+Syslog collection
+
+VM metrics
+
+Performance monitoring
+
+Benefits:
+
+Full observability
+
+Centralized logging
+
+h3. Step 11 – Backup with Recovery Services Vault
+Resource: module.recovery_services_vault
+
+Backup Features:
+
+Daily backups
+
+90-day retention
+
+Diagnostic integration
+
+Important Fix:
+
+Old: vm_id = local.calculated_vm_name
+
+Fixed: vm_id = local.virtual_machine_id
+
+Benefit:
+
+Targets actual VM resource for backup
+
+h3. Step 12 – Disk Snapshots
+Resources:
+
+azurerm_snapshot.os_disk
+
+azurerm_snapshot.data_disk
+
+Features:
+
+Incremental snapshots
+
+Snapshot tagging
+
+Snapshot for every data disk
+
+Benefits:
+
+Fast recovery
+
+Backup redundancy
+
+h3. Step 13 – Azure Site Recovery
+Resources:
+
+Windows: azurerm_virtual_machine_extension.asr_windows
+
+Linux: azurerm_virtual_machine_extension.asr_linux
+
+Benefit:
+
+Disaster recovery replication
+
+Cross-region failover
+
+h3. Step 14 – Azure Policy Compliance
+Resources:
+
+Windows: azurerm_virtual_machine_extension.guest_config_windows
+
+Linux: azurerm_virtual_machine_extension.guest_config_linux
+
+Benefit:
+
+Security compliance
+
+Governance enforcement
+
+h3. Step 15 – Private Disk Access
+Resource: azurerm_disk_access
+
+Benefit:
+
+Prevents public exposure of managed disks
+
+Improves security posture
+
+h3. Step 16 – VM Availability Monitoring
+Resource: azurerm_monitor_metric_alert
+
+Alert Trigger:
+
+{code}
+VM availability < 1
+{code}
+
+Benefit:
+
+Immediate notification of VM outages
+
+h3. Step 17 – Automatic Password Generation
+Resource: random_password
+
+Functionality:
+
+Generates password if none provided
+
+Benefit:
+
+Secure credentials
+
+Eliminates weak passwords
+
+h2. 18. Key Enhancements in This Module
+
+|| Category || Feature Highlights ||
+| Security | Disk encryption, Trusted Launch, Guest configuration compliance, Private disk access |
+| Backup & Recovery | Recovery Services Vault, OS & Data disk snapshots, Azure Site Recovery |
+| Monitoring | Azure Monitor Agent, Log Analytics, Dependency Agent, Diagnostic settings, Availability alerts |
+| Disk Management | Multiple disk creation methods, Performance tiers, On-demand bursting, Disk network access policies |
+| Flexibility | Support for existing NSG, Placement options (Availability Set, Dedicated Host, Proximity Placement) |
+| Lifecycle | Termination notifications, Hibernation support, Automatic patching, OS image notifications |
+
+h2. 19. Architecture Outcome
+After deployment, the module provides:
+
+Fully configured Azure Virtual Machine
+
+Secure network connectivity
+
+Encrypted OS and data disks
+
+Automated monitoring and logging
+
+Backup and snapshot-based recovery
+
+Policy compliance
+
+Disaster recovery readiness
