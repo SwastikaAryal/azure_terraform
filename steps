@@ -1,0 +1,34 @@
+Steps to Run RSV-v2
+
+Step 1: Trigger via GitHub Actions
+Use the GitHub Action workflow to run Terraform for each folder automatically.
+
+Step 2: Configure the File Path
+In the workflow file, locate the variable:
+yamlTF_DIR: "path/to/your/terraform/folder"
+
+Update TF_DIR to point to the correct Terraform directory as needed.
+
+
+Step 3: Push the Code
+Place your test files in one of the following locations:
+LocationDescriptiontests/ folderRecommended location for test filesRoot directoryAlternatively place in the repo rootCustom pathDefine the path explicitly in the workflow TF_DIR variable
+bashgit add .
+git commit -m "Add RSV-v2 Terraform config"
+git push origin main
+
+Step 4: Workflow Executes Automatically
+Once the code is pushed:
+
+✅ GitHub Actions triggers the workflow automatically
+✅ Terraform runs against the specified TF_DIR
+✅ All steps execute in the pipeline
+
+
+Step 5: Monitor the Logs
+View execution logs in real time:
+
+Go to your GitHub repository
+Click the Actions tab
+Select the latest workflow run
+Expand each step to view detailed logs
