@@ -1,0 +1,285 @@
+# Terraform Azure VM Enhanced Module – Documentation
+
+## Overview
+
+The **Terraform Azure VM Enhanced Module** is designed to standardize the deployment of **Azure Virtual Machines** across environments while incorporating additional operational, monitoring, and validation capabilities.
+
+This module supports both **Linux and Windows virtual machines**, introduces **pre-deployment validation checks**, and integrates **Azure monitoring configurations** through reusable templates.
+
+The module is structured to promote **modularity, scalability, and consistent infrastructure deployment** across different environments.
+
+---
+
+# Module Architecture
+
+The Terraform module is organized into reusable components.
+
+## Root Module
+
+The root module orchestrates the entire VM deployment and contains the following files:
+
+| File            | Purpose                                    |
+| --------------- | ------------------------------------------ |
+| `main.tf`       | Main orchestration logic for VM deployment |
+| `variables.tf`  | Input variables for the module             |
+| `outputs.tf`    | Output values exposed after deployment     |
+| `locals.tf`     | Local values used for configuration logic  |
+| `versions.tf`   | Provider and Terraform version constraints |
+| `pre-checks.tf` | Validation checks before resource creation |
+
+---
+
+## Submodules
+
+The module is split into two dedicated submodules to support different operating systems.
+
+### Linux VM Module
+
+Location:
+
+```
+modules/azure_linux_vm
+```
+
+Files included:
+
+| File           | Purpose                               |
+| -------------- | ------------------------------------- |
+| `main.tf`      | Linux VM resource configuration       |
+| `variables.tf` | Input variables specific to Linux VMs |
+| `outputs.tf`   | Outputs related to Linux VM resources |
+| `versions.tf`  | Provider version configuration        |
+
+Capabilities include:
+
+* Linux virtual machine provisioning
+* Disk and network configuration
+* Extension support for monitoring or automation
+
+---
+
+### Windows VM Module
+
+Location:
+
+```
+modules/azure_windows_vm
+```
+
+Files included:
+
+| File           | Purpose                                 |
+| -------------- | --------------------------------------- |
+| `main.tf`      | Windows VM resource configuration       |
+| `variables.tf` | Input variables specific to Windows VMs |
+| `outputs.tf`   | Outputs related to Windows VM resources |
+| `versions.tf`  | Provider version configuration          |
+
+Capabilities include:
+
+* Windows virtual machine provisioning
+* Windows-specific configuration options
+* Integration with VM extensions and management tools
+
+---
+
+# Templates
+
+## Azure Monitor Agent (AMA) Template
+
+Location:
+
+```
+templates/ama_settings.json.tpl
+```
+
+This template is used to configure **Azure Monitor Agent settings** for deployed virtual machines.
+
+### Purpose
+
+* Standardize monitoring configurations
+* Enable consistent telemetry collection
+* Simplify agent configuration across environments
+
+### Benefits
+
+* Centralized monitoring configuration
+* Improved observability for deployed VMs
+* Easier management of monitoring settings
+
+---
+
+# Key Features Added in the Enhanced Module
+
+## 1. Multi-OS Virtual Machine Support
+
+The module now supports deployment of both:
+
+* **Linux Virtual Machines**
+* **Windows Virtual Machines**
+
+Each OS is handled through its own reusable submodule.
+
+### Benefits
+
+* Cleaner architecture
+* Easier maintenance
+* Reusable OS-specific logic
+
+---
+
+# 2. Pre-Deployment Validation Checks
+
+The module introduces a **pre-check mechanism** through:
+
+```
+pre-checks.tf
+```
+
+### Purpose
+
+To validate inputs and environment conditions before creating infrastructure.
+
+### Examples of Validation
+
+* Required variable checks
+* Resource configuration validation
+* Preventing invalid infrastructure deployments
+
+### Benefits
+
+* Reduces deployment failures
+* Improves Terraform pipeline reliability
+* Provides early error detection
+
+---
+
+# 3. Azure Monitor Agent Integration
+
+The module integrates **Azure Monitor Agent configuration** using a template-based approach.
+
+### Features
+
+* Monitoring agent configuration through templates
+* Reusable monitoring configuration
+* Standardized telemetry setup
+
+### Benefits
+
+* Improved observability
+* Centralized logging and metrics collection
+* Consistent monitoring across environments
+
+---
+
+# 4. Modular Terraform Design
+
+The enhanced module follows a **modular architecture**.
+
+### Design Principles
+
+* Separation of concerns
+* Reusable components
+* Simplified maintenance
+
+### Structure Benefits
+
+* Easier updates and enhancements
+* Clear separation between Linux and Windows deployments
+* Better scalability for large environments
+
+---
+
+# 5. Centralized Local Configuration
+
+The module uses `locals.tf` to manage reusable values.
+
+### Purpose
+
+* Simplify repeated configuration values
+* Reduce duplication
+* Improve readability of Terraform code
+
+### Benefits
+
+* Cleaner codebase
+* Easier configuration management
+
+---
+
+# 6. Version Control for Providers
+
+The `versions.tf` file ensures controlled Terraform execution.
+
+### Configurations
+
+* Terraform version constraint
+* AzureRM provider version specification
+
+### Benefits
+
+* Prevents unexpected provider changes
+* Improves module stability
+
+---
+
+# Module Deployment Flow
+
+1. Input variables are provided to the module.
+2. Pre-deployment validation checks are executed.
+3. The appropriate OS module is selected:
+
+   * Linux VM module
+   * Windows VM module
+4. Virtual machine resources are created.
+5. Monitoring configuration is applied through templates.
+6. Outputs are exported for use by other infrastructure modules.
+
+---
+
+# Outputs
+
+The module exposes several outputs to allow integration with other infrastructure components.
+
+Examples include:
+
+* Virtual Machine ID
+* Virtual Machine Name
+* Network Interface Information
+* Resource Group Information
+
+These outputs enable other Terraform modules or infrastructure pipelines to reference the deployed virtual machines.
+
+---
+
+# Benefits of the Enhanced Module
+
+The improved Terraform module provides:
+
+* Standardized Azure VM deployment
+* Support for both Windows and Linux environments
+* Pre-deployment validation checks
+* Integrated monitoring configuration
+* Modular and maintainable infrastructure code
+
+This approach ensures that virtual machine deployments follow **consistent infrastructure standards across environments**.
+
+---
+
+# Conclusion
+
+The **Terraform Azure VM Enhanced Module** provides a scalable and maintainable way to deploy Azure virtual machines with built-in validation and monitoring support.
+
+By separating Linux and Windows deployments into dedicated modules and introducing monitoring templates and validation checks, the module enables teams to maintain **reliable, standardized, and observable infrastructure deployments**.
+
+---
+
+# Future Enhancements
+
+Potential improvements for future versions of the module include:
+
+* Automated backup integration
+* Security hardening configurations
+* Policy-based governance
+* Integration with centralized logging platforms
+* Automated tagging and compliance checks
