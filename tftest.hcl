@@ -41,3 +41,47 @@ run "create_load_balancer" {
   }
 
 }
+run "plan_load_balancer_enabled" {
+
+  command = plan
+
+  variables {
+    enable_load_balancer        = true
+    load_balancer_protocol      = "Tcp"
+    load_balancer_frontend_port = 80
+    load_balancer_backend_port  = 80
+
+    health_probe_protocol = "Http"
+    health_probe_port     = 80
+    health_probe_path     = "/"
+
+    cloud_region        = "eastus"
+    resource_group_name = "test-rg"
+  }
+
+  assert {
+    condition     = length(azurerm_public_ip.lb) == 1
+    error_message = "Public IP should be created when load balancer is enabled."
+  }
+
+  assert {
+    condition     = length(azurerm_lb.main) == 1
+    error_message = "Load balancer should be created."
+  }
+
+  assert {
+    condition     = length(azurerm_lb_backend_address_pool.main) == 1
+    error_message = "Backend pool should be created."
+  }
+
+  assert {
+    condition     = length(azurerm_lb_probe.health) == 1
+    error_message = "Health probe should be created."
+  }
+
+  assert {
+    condition     = length(azurerm_lb_rule.main) == 1
+    error_message = "Load balancer rule should be created."
+  }
+
+}
