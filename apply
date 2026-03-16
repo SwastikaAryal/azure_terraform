@@ -1,14 +1,127 @@
-run "windows_vm_apply" {
+# =============================================================================
+# RUN 8 — Windows VM (apply)
+# Validates: Windows VM is actually created with correct properties
+# =============================================================================
+run "windows_vm_basic_apply" {
   command = apply
 
   variables {
-    vm_os_type = "windows"
-    vm_size    = "Standard_B2s"
-    location   = "eastus"
+    deploy_linux_vm   = false
+    deploy_windows_vm = true
+    admin_username = "winadmin"
+    admin_password = "WinP@ssw0rd1234!"
+    windows_version = {
+      publisher = "MicrosoftWindowsServer"
+      offer     = "WindowsServer"
+      sku       = "2022-Datacenter"
+      version   = "latest"
+    }
+    enable_automatic_updates = true
+    windows_patch_mode       = "AutomaticByOS"
+    windows_license_type     = "None"
+    os_disk_storage_account_type = "StandardSSD_LRS"
+    os_disk_caching              = "ReadWrite"
+    disk_size_gb                 = 128
+    enable_boot_diagnostics      = true
+    nsg_inbound_rules = [
+      {
+        name                   = "allow-rdp"
+        destination_port_range = "3389"
+        source_address_prefix  = "10.0.0.0/8"
+        priority               = 100
+      },
+      {
+        name                   = "allow-winrm"
+        destination_port_range = "5985"
+        source_address_prefix  = "10.0.0.0/8"
+        priority               = 200
+      }
+    ]
   }
 
+  # --- Deployment flags ---
   assert {
-    condition     = azurerm_windows_virtual_machine.vm.name != ""
-    error_message = "Windows VM was not created."
+    condition     = var.deploy_windows_vm == true
+    error_message = "deploy_windows_vm must be true for this run"
+  }
+  assert {
+    condition     = var.deploy_linux_vm == false
+    error_message = "deploy_linux_vm must be false when testing Windows"
+  }
+
+  # --- VM was actually created ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].id != ""
+    error_message = "Windows VM resource was not created"
+  }
+
+  # --- OS identity ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].admin_username == "winadmin"
+    error_message = "Admin username does not match expected value"
+  }
+
+  # --- Image reference ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].source_image_reference[0].sku == "2022-Datacenter"
+    error_message = "Windows SKU does not match 2022-Datacenter"
+  }
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].source_image_reference[0].publisher == "MicrosoftWindowsServer"
+    error_message = "Image publisher does not match MicrosoftWindowsServer"
+  }
+
+  # --- Disk ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].os_disk[0].storage_account_type == "StandardSSD_LRS"
+    error_message = "OS disk storage type does not match StandardSSD_LRS"
+  }
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].os_disk[0].caching == "ReadWrite"
+    error_message = "OS disk caching does not match ReadWrite"
+  }
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].os_disk[0].disk_size_gb == 128
+    error_message = "OS disk size does not match 128 GB"
+  }
+
+  # --- Patching ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].enable_automatic_updates == true
+    error_message = "Automatic updates should be enabled"
+  }
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].patch_mode == "AutomaticByOS"
+    error_message = "Patch mode does not match AutomaticByOS"
+  }
+
+  # --- License ---
+  assert {
+    condition     = azurerm_windows_virtual_machine.this[0].license_type == "None"
+    error_message = "License type should be None"
+  }
+
+  # --- Boot diagnostics ---
+  assert {
+    condition     = length(azurerm_windows_virtual_machine.this[0].boot_diagnostics) > 0
+    error_message = "Boot diagnostics should be enabled"
+  }
+
+  # --- NSG rules ---
+  assert {
+    condition     = length(var.nsg_inbound_rules) == 2
+    error_message = "Expected 2 NSG inbound rules (RDP + WinRM)"
+  }
+  assert {
+    condition     = contains([for r in var.nsg_inbound_rules : r.destination_port_range], "3389")
+    error_message = "RDP rule on port 3389 is missing from NSG inbound rules"
+  }
+  assert {
+    condition     = contains([for r in var.nsg_inbound_rules : r.destination_port_range], "5985")
+    error_message = "WinRM rule on port 5985 is missing from NSG inbound rules"
+  }
+  assert {
+    condition     = alltrue([for r in var.nsg_inbound_rules : r.source_address_prefix == "10.0.0.0/8"])
+    error_message = "All NSG rules should restrict source to internal range 10.0.0.0/8"
   }
 }
