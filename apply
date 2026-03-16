@@ -1,0 +1,14 @@
+run "windows_vm_apply" {
+  command = apply
+
+  variables {
+    vm_os_type = "windows"
+    vm_size    = "Standard_B2s"
+    location   = "eastus"
+  }
+
+  assert {
+    condition     = azurerm_windows_virtual_machine.vm.name != ""
+    error_message = "Windows VM was not created."
+  }
+}
