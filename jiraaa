@@ -1,12 +1,13 @@
-AWS EC2 RightSizing — Consumption Analysis & SKU Recommendations
+Azure VM RightSizing — Consumption Analysis & SKU Recommendations
 Description
 
-Analyze actual EC2 utilization across AWS accounts and recommend the most cost-effective instance SKUs to reduce cloud spend and improve efficiency.
+Analyze actual Azure VM utilization across subscriptions and resource groups, then recommend the most cost-effective VM SKUs to reduce Azure spend and improve resource efficiency.
 
 Acceptance criteria
 
-All EC2 instances identified across accounts/regions
-Utilization metrics collected (CPU, memory, network, disk) over 14–30 days
-Over-provisioned / under-utilized instances flagged
-Best-fit SKU recommended per instance
-Report includes current vs recommended type, cost savings & risk level
+All Azure VMs identified across subscriptions and resource groups
+Utilization metrics collected (CPU, memory, disk, network) over 14–30 days via Azure Monitor / Advisor
+Over-provisioned / under-utilized VMs flagged with supporting data
+Best-fit VM SKU recommended per instance based on actual usage
+Report includes current vs recommended SKU, estimated cost savings & risk level
+Stakeholder sign-off obtained before any resizing is applied
