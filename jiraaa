@@ -1,0 +1,12 @@
+AWS EC2 RightSizing — Consumption Analysis & SKU Recommendations
+Description
+
+Analyze actual EC2 utilization across AWS accounts and recommend the most cost-effective instance SKUs to reduce cloud spend and improve efficiency.
+
+Acceptance criteria
+
+All EC2 instances identified across accounts/regions
+Utilization metrics collected (CPU, memory, network, disk) over 14–30 days
+Over-provisioned / under-utilized instances flagged
+Best-fit SKU recommended per instance
+Report includes current vs recommended type, cost savings & risk level
