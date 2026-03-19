@@ -1,54 +1,18 @@
-
-JIRA-001 — Patch critical RCE vulnerability on Azure VM and App Service
-JIRA-002 — Remediate critical Azure Storage Account vulnerability
-JIRA-003 — Fix Java deserialization vulnerability via Commons Collections upgrade
-JIRA-004 — Upgrade curl/libcurl to resolve heap buffer overflow (CVE-2023-38545)
-JIRA-005 — Patch Apache Hadoop arbitrary file upload vulnerability
-
+Export full SQL database configuration and Windows VM association to CSV
+Data Engineering · SQL Infrastructure · Reporting
 Description
-A critical remote code execution vulnerability (CVE-2025-55315) has been identified affecting 32 Azure VM and App Service resources. Exploitation could allow unauthenticated attackers to execute arbitrary code, compromising the OS and runtime environment. Exposed credentials must be rotated as part of remediation to prevent lateral movement.
+As a database administrator / infrastructure engineer, I need a comprehensive export of every SQL database 
+configuration and its associated Windows VM settings into a structured CSV format. This export must 
+capture every configurable parameter — from instance-level settings and authentication modes to storage, network, memory, security policies, and Windows VM host details.
+The goal is to provide a single, auditable, version-controllable snapshot of the entire SQL estate that can be used for compliance, capacity planning, migration scoping, and incident response.
 
-Acceptance criteria
-OS and runtime patched to the vendor-recommended version on all 32 affected resources
-Vendor security advisory applied and confirmed on each instance
-All credentials exposed during the vulnerability window have been rotated
-Wiz rescan returns no findings for CVE-2025-55315 on affected resources
-No new critical alerts triggered within 48 hours of patch deployment
-
-Description
-CVE-2025-15467 is a critical vulnerability affecting 25 Azure Storage Account resources. The flaw may allow unauthorized access or data exfiltration due to misconfigured or unpatched storage firewall rules. Immediate hardening of firewall rules, application of the Microsoft patch, and enabling advanced threat protection is required.
-
-Acceptance criteria
-Storage account firewall rules updated to restrict access to approved IP ranges and VNets only
-Microsoft security patch applied to all 25 affected storage accounts
-Advanced threat protection (Microsoft Defender for Storage) enabled on all affected resources
-Wiz rescan confirms CVE-2025-15467 is resolved across all impacted accounts
-No unauthorized access events logged post-remediation
-
-Description
-CVE-2015-7501 is a well-known high-severity Java deserialization vulnerability in the Apache Commons Collections library affecting 12 resources. Exploitation allows remote code execution through crafted deserialization payloads. The fix requires upgrading the library to a patched version, removing unsafe deserialization patterns, and applying input validation.
-
-Acceptance criteria
-Apache Commons Collections library upgraded to a patched version (≥3.2.2 or ≥4.1) on all 12 affected services
-All instances of unsafe Java deserialization removed from the codebase
-Input validation enforced on all deserialization entry points
-Static code analysis confirms no remaining gadget chain vulnerabilities
-Wiz rescan returns no findings for CVE-2015-7501
-
-Description
-CVE-2023-38545 is a medium-severity heap buffer overflow vulnerability in curl and libcurl affecting 7 resources. The flaw can be triggered via a malicious SOCKS5 proxy response. Remediation requires upgrading curl to version 8.4.0 or later and auditing all curl usage in the codebase to remove insecure patterns.
-
-Acceptance criteria
-curl and libcurl upgraded to version ≥ 8.4.0 on all 7 affected resources
-All curl usage in the codebase reviewed and insecure patterns resolved
-No SOCKS5 proxy configurations left in an exploitable state
-Wiz rescan confirms CVE-2023-38545 is no longer present on affected resources
-
-Description
-CVE-2022-26612 is a medium-severity vulnerability in Apache Hadoop affecting 7 resources. The flaw allows malicious actors to upload arbitrary files via the HTTP server, potentially leading to remote code execution or data compromise. Remediation requires upgrading Hadoop to the patched version and restricting file upload permissions.
-
-Acceptance criteria
-Apache Hadoop upgraded to the patched version on all 7 affected resources
-File upload permissions restricted to authorised roles and processes only
-Hadoop HTTP server endpoints audited and unnecessary upload endpoints disabled
-Wiz rescan confirms CVE-2022-26612 is resolved on all affected resources
+A single CSV file (or one per category with a manifest) is generated covering all SQL instances and their associated Windows VM hosts
+Every field listed in the scope above is present as a named column in the export — no fields omitted
+Each row uniquely identifies a SQL database by instance name + database name + host VM, with no duplicate rows
+All Windows VM host details are correctly associated to the SQL instance running on that VM
+NULL or unavailable fields are represented as empty cells, not errors, so the CSV remains parseable
+Export script/process is documented with instructions to re-run on demand
+Output validated against at least 2 known SQL instances to confirm accuracy of values
+CSV is UTF-8 encoded with headers on row 1 and passes import test into Excel and Power BI without errors
+Sensitive fields (passwords, service account credentials) are masked or excluded from the export
+Reviewed and signed off by the DBA lead before closing the ticket
