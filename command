@@ -1,2 +1,14 @@
-I’m currently testing the .hcl file for backup and recovery using GitHub Actions. The latest run Backup vault terraform fixes 
- has been updated to include tests for other resources as well. Regarding the storage account domain join, URL whitelisting has been added, so I’m now working with Prem on the VM reboot since the same issue persists.
+Get-ChildItem -Path "C:\" -Recurse -Filter "libssl-3-x64.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+    $raw   = $_.VersionInfo.FileVersion -replace ',','.' -replace '\s',''
+    $parts = $raw.Split('.')
+    $ver   = [System.Version]"$($parts[0]).$($parts[1]).$($parts[2])"
+    $status = if ($ver -ge [System.Version]"3.5.5") {"SAFE - PATCHED"} 
+              elseif ($ver -ge [System.Version]"3.5.0") {"VULNERABLE"}
+              else {"NOT IN RANGE"}
+    [PSCustomObject]@{
+        Version    = $ver
+        Status     = $status
+        LastWrite  = $_.LastWriteTime
+        Path       = $_.FullName
+    }
+} | Sort-Object Version -Descending | Format-Table -AutoSize
