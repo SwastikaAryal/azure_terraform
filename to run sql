@@ -1,0 +1,11 @@
+# One-time setup
+Install-Module SqlServer -Scope CurrentUser
+
+# Run (Windows auth)
+.\Collect-SQLConfig-Complete.ps1 -SqlInstances "SQL01","SQL02\INST1" -OutputDir "C:\SQLExport"
+
+# SQL auth
+.\Collect-SQLConfig-Complete.ps1 -SqlInstances "SQL01" -Credential (Get-Credential)
+
+# Review any output
+Import-Csv "C:\SQLExport\09_Database_Config.csv" | Out-GridView
