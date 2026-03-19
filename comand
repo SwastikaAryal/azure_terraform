@@ -1,0 +1,10 @@
+# Check all OpenSSL DLLs on this machine and flag vulnerable ones
+Get-ChildItem -Path "C:\" -Recurse -Filter "libssl-3-x64.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+    $v = $_.VersionInfo.FileVersion -replace ',','.' -replace '\s',''
+    $parts = $v.Split('.')
+    $ver = [System.Version]"$($parts[0]).$($parts[1]).$($parts[2])"
+    $status = if ($ver -ge [System.Version]"3.5.5") { "SAFE" } 
+              elseif ($ver -ge [System.Version]"3.5.0") { "VULNERABLE (CVE-2025-15467)" }
+              else { "NOT IN RANGE" }
+    [PSCustomObject]@{ Version = $ver; Status = $status; Path = $_.FullName }
+} | Format-Table -AutoSize
