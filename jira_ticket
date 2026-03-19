@@ -1,0 +1,54 @@
+
+JIRA-001 — Patch critical RCE vulnerability on Azure VM and App Service
+JIRA-002 — Remediate critical Azure Storage Account vulnerability
+JIRA-003 — Fix Java deserialization vulnerability via Commons Collections upgrade
+JIRA-004 — Upgrade curl/libcurl to resolve heap buffer overflow (CVE-2023-38545)
+JIRA-005 — Patch Apache Hadoop arbitrary file upload vulnerability
+
+Description
+A critical remote code execution vulnerability (CVE-2025-55315) has been identified affecting 32 Azure VM and App Service resources. Exploitation could allow unauthenticated attackers to execute arbitrary code, compromising the OS and runtime environment. Exposed credentials must be rotated as part of remediation to prevent lateral movement.
+
+Acceptance criteria
+OS and runtime patched to the vendor-recommended version on all 32 affected resources
+Vendor security advisory applied and confirmed on each instance
+All credentials exposed during the vulnerability window have been rotated
+Wiz rescan returns no findings for CVE-2025-55315 on affected resources
+No new critical alerts triggered within 48 hours of patch deployment
+
+Description
+CVE-2025-15467 is a critical vulnerability affecting 25 Azure Storage Account resources. The flaw may allow unauthorized access or data exfiltration due to misconfigured or unpatched storage firewall rules. Immediate hardening of firewall rules, application of the Microsoft patch, and enabling advanced threat protection is required.
+
+Acceptance criteria
+Storage account firewall rules updated to restrict access to approved IP ranges and VNets only
+Microsoft security patch applied to all 25 affected storage accounts
+Advanced threat protection (Microsoft Defender for Storage) enabled on all affected resources
+Wiz rescan confirms CVE-2025-15467 is resolved across all impacted accounts
+No unauthorized access events logged post-remediation
+
+Description
+CVE-2015-7501 is a well-known high-severity Java deserialization vulnerability in the Apache Commons Collections library affecting 12 resources. Exploitation allows remote code execution through crafted deserialization payloads. The fix requires upgrading the library to a patched version, removing unsafe deserialization patterns, and applying input validation.
+
+Acceptance criteria
+Apache Commons Collections library upgraded to a patched version (≥3.2.2 or ≥4.1) on all 12 affected services
+All instances of unsafe Java deserialization removed from the codebase
+Input validation enforced on all deserialization entry points
+Static code analysis confirms no remaining gadget chain vulnerabilities
+Wiz rescan returns no findings for CVE-2015-7501
+
+Description
+CVE-2023-38545 is a medium-severity heap buffer overflow vulnerability in curl and libcurl affecting 7 resources. The flaw can be triggered via a malicious SOCKS5 proxy response. Remediation requires upgrading curl to version 8.4.0 or later and auditing all curl usage in the codebase to remove insecure patterns.
+
+Acceptance criteria
+curl and libcurl upgraded to version ≥ 8.4.0 on all 7 affected resources
+All curl usage in the codebase reviewed and insecure patterns resolved
+No SOCKS5 proxy configurations left in an exploitable state
+Wiz rescan confirms CVE-2023-38545 is no longer present on affected resources
+
+Description
+CVE-2022-26612 is a medium-severity vulnerability in Apache Hadoop affecting 7 resources. The flaw allows malicious actors to upload arbitrary files via the HTTP server, potentially leading to remote code execution or data compromise. Remediation requires upgrading Hadoop to the patched version and restricting file upload permissions.
+
+Acceptance criteria
+Apache Hadoop upgraded to the patched version on all 7 affected resources
+File upload permissions restricted to authorised roles and processes only
+Hadoop HTTP server endpoints audited and unnecessary upload endpoints disabled
+Wiz rescan confirms CVE-2022-26612 is resolved on all affected resources
