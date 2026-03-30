@@ -1,3 +1,6 @@
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 param(
     [string]$NexusBaseUrl   = "https://nexus.bmwgroup.net",
     [string]$NexusRepo      = "nuget_proxy",
@@ -19,6 +22,8 @@ function Write-Log {
 
 function Get-LatestNexusVersion {
     param([string]$Package, [string]$MinVersion)
+
+    Write-Log "Trying Nexus REST API..."
     try {
         $searchUrl = "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc"
         $resp = Invoke-RestMethod -Uri $searchUrl -UseBasicParsing -TimeoutSec 30
@@ -27,17 +32,27 @@ function Get-LatestNexusVersion {
                 Sort-Object { [version]$_ } -Descending |
                 Where-Object { [version]$_ -ge [version]$MinVersion } |
                 Select-Object -First 1
-        if ($safe) { return $safe }
-    } catch {}
+        if ($safe) { Write-Log "Found via REST API: $safe"; return $safe }
+        Write-Log "REST API returned no version >= $MinVersion" "WARN"
+    } catch {
+        Write-Log "Nexus REST API error: $_" "WARN"
+    }
+
+    Write-Log "Trying Nexus browse page scrape..."
     try {
         $browseUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$Package/"
         $html = Invoke-WebRequest -Uri $browseUrl -UseBasicParsing -TimeoutSec 30
-        return ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
+        $safe = ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
                ForEach-Object { $_.Groups[1].Value } |
                Where-Object { [version]$_ -ge [version]$MinVersion } |
                Sort-Object { [version]$_ } -Descending |
                Select-Object -First 1
-    } catch {}
+        if ($safe) { Write-Log "Found via browse scrape: $safe"; return $safe }
+        Write-Log "Browse scrape returned no version >= $MinVersion" "WARN"
+    } catch {
+        Write-Log "Nexus browse scrape error: $_" "WARN"
+    }
+
     return $null
 }
 
@@ -53,7 +68,7 @@ function Get-CurrentKestrelVersion {
 }
 
 New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
-Write-Log "═══ Kestrel.Core Update Started | CVE-2025-55315 | Min safe: $MinSafeVersion ═══"
+Write-Log "--- Kestrel.Core Update Started | CVE-2025-55315 | Min safe: $MinSafeVersion ---"
 
 $latestVersion = Get-LatestNexusVersion -Package $PackageName -MinVersion $MinSafeVersion
 if (-not $latestVersion) {
@@ -69,6 +84,8 @@ if ($currentVersion) {
         Write-Log "Already at $currentVersion. No action needed." "SUCCESS"
         exit 0
     }
+} else {
+    Write-Log "Could not detect current version from deps.json." "WARN"
 }
 
 if ($depsPath) {
@@ -93,9 +110,10 @@ if ($azAvailable) {
 
 $nupkgUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$PackageName/$latestVersion/$PackageName.$latestVersion.nupkg"
 $dlPath   = "C:\Temp\$PackageName.$latestVersion.nupkg"
+Write-Log "Downloading nupkg from: $nupkgUrl"
 try {
     Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -UseBasicParsing -TimeoutSec 120
-    Write-Log "Downloaded nupkg -> $dlPath ($((Get-Item $dlPath).Length) bytes)"
+    Write-Log "Downloaded -> $dlPath ($((Get-Item $dlPath).Length) bytes)"
 } catch {
     Write-Log "Nexus download failed: $_" "ERROR"
 }
