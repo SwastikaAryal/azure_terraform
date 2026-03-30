@@ -1,3 +1,4 @@
+Set-Content -Path "C:\Users\fsamdevmadmin\Desktop\02.ps1" -Encoding UTF8 -Value @'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -22,7 +23,6 @@ function Write-Log {
 
 function Get-LatestNexusVersion {
     param([string]$Package, [string]$MinVersion)
-
     Write-Log "Trying Nexus REST API..."
     try {
         $searchUrl = "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc"
@@ -37,7 +37,6 @@ function Get-LatestNexusVersion {
     } catch {
         Write-Log "Nexus REST API error: $_" "WARN"
     }
-
     Write-Log "Trying Nexus browse page scrape..."
     try {
         $browseUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$Package/"
@@ -52,7 +51,6 @@ function Get-LatestNexusVersion {
     } catch {
         Write-Log "Nexus browse scrape error: $_" "WARN"
     }
-
     return $null
 }
 
@@ -71,19 +69,13 @@ New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
 Write-Log "--- Kestrel.Core Update Started | CVE-2025-55315 | Min safe: $MinSafeVersion ---"
 
 $latestVersion = Get-LatestNexusVersion -Package $PackageName -MinVersion $MinSafeVersion
-if (-not $latestVersion) {
-    Write-Log "No version >= $MinSafeVersion found in Nexus. Aborting." "ERROR"
-    exit 1
-}
+if (-not $latestVersion) { Write-Log "No version >= $MinSafeVersion found in Nexus. Aborting." "ERROR"; exit 1 }
 Write-Log "Target version: $latestVersion"
 
 $currentVersion, $depsPath = Get-CurrentKestrelVersion
 if ($currentVersion) {
     Write-Log "Current version: $currentVersion"
-    if ([version]$currentVersion -ge [version]$latestVersion) {
-        Write-Log "Already at $currentVersion. No action needed." "SUCCESS"
-        exit 0
-    }
+    if ([version]$currentVersion -ge [version]$latestVersion) { Write-Log "Already at $currentVersion. No action needed." "SUCCESS"; exit 0 }
 } else {
     Write-Log "Could not detect current version from deps.json." "WARN"
 }
@@ -101,30 +93,22 @@ if ($azAvailable) {
         $vmMeta = Invoke-RestMethod -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -Headers @{Metadata="true"} -UseBasicParsing -TimeoutSec 10
         & az vm extension set --resource-group $vmMeta.compute.resourceGroupName --vm-name $vmMeta.compute.name --name "SqlIaaSAgent" --publisher "Microsoft.SqlServer.Management" --force-update 2>&1 | ForEach-Object { Write-Log $_ }
         Write-Log "Azure CLI extension update triggered."
-    } catch {
-        Write-Log "Azure CLI method failed: $_" "WARN"
-    }
-} else {
-    Write-Log "Azure CLI not found. Skipping." "WARN"
-}
+    } catch { Write-Log "Azure CLI method failed: $_" "WARN" }
+} else { Write-Log "Azure CLI not found. Skipping." "WARN" }
 
 $nupkgUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$PackageName/$latestVersion/$PackageName.$latestVersion.nupkg"
-$dlPath   = "C:\Temp\$PackageName.$latestVersion.nupkg"
+$dlPath = "C:\Temp\$PackageName.$latestVersion.nupkg"
 Write-Log "Downloading nupkg from: $nupkgUrl"
 try {
     Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -UseBasicParsing -TimeoutSec 120
     Write-Log "Downloaded -> $dlPath ($((Get-Item $dlPath).Length) bytes)"
-} catch {
-    Write-Log "Nexus download failed: $_" "ERROR"
-}
+} catch { Write-Log "Nexus download failed: $_" "ERROR" }
 
 $csprojFiles = Get-ChildItem -Path $PluginBase -Recurse -Filter "*.csproj" -ErrorAction SilentlyContinue
 foreach ($proj in $csprojFiles) {
     try {
         & dotnet add $proj.FullName package $PackageName --version $latestVersion 2>&1 | ForEach-Object { Write-Log $_ }
-    } catch {
-        Write-Log "dotnet update failed for $($proj.Name): $_" "WARN"
-    }
+    } catch { Write-Log "dotnet update failed for $($proj.Name): $_" "WARN" }
 }
 
 $newVersion, $_ = Get-CurrentKestrelVersion
@@ -133,3 +117,4 @@ if ($newVersion -and ([version]$newVersion -ge [version]$MinSafeVersion)) {
 } else {
     Write-Log "ACTION REQUIRED: Azure Portal -> VM (fs-msl-app1) -> Extensions + Applications -> SqlIaaSAgent -> Update" "WARN"
 }
+'@
