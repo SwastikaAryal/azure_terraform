@@ -1,2 +1,7 @@
-Get-ChildItem -Path "C:\" -Recurse -Filter "commons-collections*.jar" -ErrorAction SilentlyContinue |
-    Select-Object Name, FullName | Format-Table -AutoSize
+Get-ChildItem "C:\Packages\Plugins\Microsoft.SqlServer.Management.SqlIaaSAgent" -Recurse -Filter "*.deps.json" |
+ForEach-Object { 
+    $c = Get-Content $_.FullName -Raw
+    if ($c -match '"Microsoft\.AspNetCore\.Server\.Kestrel\.Core/([\d\.]+)"') {
+        Write-Host "$($_.FullName) --> $($Matches[1])"
+    }
+}
