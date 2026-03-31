@@ -32,23 +32,7 @@ function Get-BestNexusVersion {
     $pkgLower = $Package.ToLower()
     $minParsed = Parse-SafeVersion -Ver $MinVer
 
-    # Method 1: REST API
-    try {
-        $resp = Invoke-RestMethod -Uri "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc" -UseBasicParsing -TimeoutSec 30
-        $best = $resp.items |
-                ForEach-Object { $_.version } |
-                Where-Object   { $_ -match '^\d+\.\d+\.\d+' } |
-                Where-Object   {
-                    $parsed = Parse-SafeVersion -Ver $_
-                    $parsed -ne $null -and $parsed -ge $minParsed
-                } |
-                Sort-Object { Parse-SafeVersion -Ver $_ } |
-                Select-Object -First 1
-        if ($best) { Write-Log "REST API found: $Package $best"; return $best }
-        Write-Log "REST API: no version >= $MinVer" "WARN"
-    } catch { Write-Log "REST API error: $_" "WARN" }
-
-    # Method 2: Browse page scrape
+    # Use browse scrape only - REST API returns versions not in browse index
     try {
         $html = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/" -UseBasicParsing -TimeoutSec 30
         $best = ([regex]'href="(\d+\.\d+[^"]*?)/"').Matches($html.Content) |
@@ -61,7 +45,7 @@ function Get-BestNexusVersion {
                 Sort-Object { Parse-SafeVersion -Ver $_ } |
                 Select-Object -First 1
         if ($best) { Write-Log "Browse scrape found: $Package $best"; return $best }
-        Write-Log "Browse scrape: no version >= $MinVer" "WARN"
+        Write-Log "Browse scrape: no version >= $MinVer found in Nexus" "WARN"
     } catch { Write-Log "Browse scrape error: $_" "WARN" }
 
     return $null
@@ -92,6 +76,13 @@ function Get-CurrentVersion {
 New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
 Write-Log "--- NuGet.Packaging Update | CVE-2024-0057 | Machine: $env:COMPUTERNAME ---"
 Write-Log "Min safe version: $MinVersion | Target path: $TargetPath"
+
+# Exit cleanly if Octopus not installed on this VM
+if (-not (Test-Path $TargetPath)) {
+    Write-Log "Target path not found: $TargetPath" "INFO"
+    Write-Log "This VM does not have Octopus/Calamari installed. No action needed." "SUCCESS"
+    exit 0
+}
 
 $nexusVersion = Get-BestNexusVersion -Package $PackageName -MinVer $MinVersion
 if (-not $nexusVersion) {
@@ -124,7 +115,7 @@ $nupkgUrl = Get-NupkgUrl -Package $PackageName -Version $nexusVersion
 $dlPath   = "C:\Temp\$PackageName.$nexusVersion.nupkg"
 Write-Log "Downloading from: $nupkgUrl"
 try {
-    Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -UseBasicParsing -TimeoutSec 120
+    Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -TimeoutSec 120
     $size = (Get-Item $dlPath).Length
     Write-Log "Downloaded -> $dlPath ($size bytes)"
 } catch {
