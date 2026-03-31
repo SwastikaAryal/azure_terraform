@@ -49,7 +49,6 @@ function Get-BestNexusVersion {
     param([string]$Package)
     $pkgLower = $Package.ToLower()
 
-    # Method 1: REST API
     try {
         $resp = Invoke-RestMethod -Uri "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc" -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
         $best = $resp.items |
@@ -62,7 +61,6 @@ function Get-BestNexusVersion {
         Write-Log "[$Package] REST API: no version >= $MinVersion" "WARN"
     } catch { Write-Log "[$Package] REST API error: $_" "WARN" }
 
-    # Method 2: Browse page scrape (lowercase URL)
     try {
         $html = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/" -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
         $best = ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
@@ -79,13 +77,10 @@ function Get-BestNexusVersion {
 
 function Download-Nupkg {
     param([string]$Package, [string]$Version)
-    $pkgLower  = $Package.ToLower()
-    $dlPath    = "$DownloadDir\$pkgLower-$Version.nupkg"
-
-    # Correct URL format confirmed from Nexus browser:
-    # https://nexus.bmwgroup.net/repository/nuget_proxy/microsoft.aspnetcore.app.runtime.win-x86/9.0.11
-    # The version folder IS the download endpoint - no trailing filename needed
-    $url = "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version"
+    $pkgLower = $Package.ToLower()
+    # Download as .zip directly so Expand-Archive works without renaming
+    $dlPath   = "$DownloadDir\$pkgLower-$Version.zip"
+    $url      = "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version"
 
     Write-Log "[$Package] Downloading $Version from: $url"
     try {
@@ -100,15 +95,16 @@ function Download-Nupkg {
     }
 }
 
-function Install-RuntimeFromNupkg {
-    param([string]$NupkgPath, [string]$Package, [string]$Version, [string]$TargetBase)
+function Install-RuntimeFromZip {
+    param([string]$ZipPath, [string]$Package, [string]$Version, [string]$TargetBase)
     $targetDir  = "$TargetBase\$Version"
     $extractDir = "$DownloadDir\extracted\$Package.$Version"
 
-    Write-Log "[$Package] Extracting..."
+    Write-Log "[$Package] Extracting $ZipPath..."
     try {
         if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
-        Expand-Archive -Path $NupkgPath -DestinationPath $extractDir -Force -ErrorAction Stop
+        Expand-Archive -Path $ZipPath -DestinationPath $extractDir -Force -ErrorAction Stop
+        Write-Log "[$Package] Extracted to $extractDir"
     } catch {
         Write-Log "[$Package] Extraction failed: $_" "ERROR"
         return $false
@@ -120,9 +116,13 @@ function Install-RuntimeFromNupkg {
                   Sort-Object  { (Get-ChildItem $_.FullName -Filter "*.dll").Count } -Descending |
                   Select-Object -First 1
 
-    if (-not $runtimeSrc) { $runtimeSrc = Get-Item $extractDir }
+    if (-not $runtimeSrc) {
+        Write-Log "[$Package] No DLL-heavy folder found, using root of extracted content"
+        $runtimeSrc = Get-Item $extractDir
+    }
 
-    Write-Log "[$Package] Installing: $($runtimeSrc.FullName) -> $targetDir"
+    Write-Log "[$Package] Runtime source: $($runtimeSrc.FullName)"
+    Write-Log "[$Package] Installing to: $targetDir"
     try {
         if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
         Copy-Item "$($runtimeSrc.FullName)\*" $targetDir -Recurse -Force -ErrorAction Stop
@@ -185,10 +185,10 @@ foreach ($arch in @("x86", "x64")) {
         } catch { Write-Log "[$arch] Backup skipped: $_" "WARN" }
     }
 
-    $nupkgPath = Download-Nupkg -Package $pkg -Version $nexusVersion
-    if (-not $nupkgPath) { $failCount++; continue }
+    $zipPath = Download-Nupkg -Package $pkg -Version $nexusVersion
+    if (-not $zipPath) { $failCount++; continue }
 
-    $ok = Install-RuntimeFromNupkg -NupkgPath $nupkgPath -Package $pkg -Version $nexusVersion -TargetBase $targetBase
+    $ok = Install-RuntimeFromZip -ZipPath $zipPath -Package $pkg -Version $nexusVersion -TargetBase $targetBase
     if ($ok) { $successCount++ } else { $failCount++ }
 }
 
@@ -206,7 +206,7 @@ if ($nowSafe.Count -gt 0 -and $failCount -eq 0) {
 } elseif ($nowSafe.Count -gt 0 -and $failCount -gt 0) {
     Write-Log "--- PARTIAL: $successCount arch(s) done, $failCount failed. Check log. ---" "WARN"
 } else {
-    Write-Log "--- BLOCKED: Could not download from Nexus. ---" "WARN"
+    Write-Log "--- BLOCKED: Could not install from Nexus packages. ---" "WARN"
     Write-Log "  $NexusBaseUrl/service/rest/repository/browse/$NexusRepo/microsoft.aspnetcore.app.runtime.win-x86/" "WARN"
     Write-Log "  $NexusBaseUrl/service/rest/repository/browse/$NexusRepo/microsoft.aspnetcore.app.runtime.win-x64/" "WARN"
 }
