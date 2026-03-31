@@ -1,7 +1,5 @@
 # 10_Update-AspNetCoreRuntime.ps1
 # CVE-2025-55315 | Microsoft.AspNetCore.App.Runtime.win-x86 + win-x64
-# Handles BOTH x86 and x64 in one script
-# Uses BMW Nexus: https://nexus.bmwgroup.net
 
 param(
     [string]$NexusBaseUrl = "https://nexus.bmwgroup.net",
@@ -53,8 +51,7 @@ function Get-BestNexusVersion {
 
     # Method 1: REST API
     try {
-        $url  = "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc"
-        $resp = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+        $resp = Invoke-RestMethod -Uri "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc" -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
         $best = $resp.items |
                 ForEach-Object { $_.version } |
                 Where-Object   { $_ -match '^\d+\.\d+\.\d+$' } |
@@ -63,15 +60,11 @@ function Get-BestNexusVersion {
                 Select-Object  -First 1
         if ($best) { Write-Log "[$Package] REST API found: $best"; return $best }
         Write-Log "[$Package] REST API: no version >= $MinVersion" "WARN"
-    } catch {
-        Write-Log "[$Package] REST API error: $_" "WARN"
-    }
+    } catch { Write-Log "[$Package] REST API error: $_" "WARN" }
 
     # Method 2: Browse page scrape (lowercase URL)
     try {
-        $browseUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/"
-        Write-Log "[$Package] Scraping: $browseUrl"
-        $html = Invoke-WebRequest -Uri $browseUrl -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+        $html = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/" -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
         $best = ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
                 ForEach-Object { $_.Groups[1].Value } |
                 Where-Object   { [version]$_ -ge [version]$MinVersion } |
@@ -79,75 +72,22 @@ function Get-BestNexusVersion {
                 Select-Object  -First 1
         if ($best) { Write-Log "[$Package] Browse scrape found: $best"; return $best }
         Write-Log "[$Package] Browse scrape: no version >= $MinVersion" "WARN"
-    } catch {
-        Write-Log "[$Package] Browse scrape error: $_" "WARN"
-    }
-
-    return $null
-}
-
-function Get-NupkgDownloadUrl {
-    param([string]$Package, [string]$Version)
-    $pkgLower = $Package.ToLower()
-
-    # Try to find the actual .nupkg filename from the Nexus version browse page
-    # Nexus shows the actual filenames available - don't guess the filename
-    try {
-        $versionBrowseUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/"
-        Write-Log "[$Package] Checking version page: $versionBrowseUrl"
-        $html = Invoke-WebRequest -Uri $versionBrowseUrl -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-        # Find the .nupkg link on the page
-        $nupkgMatch = ([regex]'href="([^"]*\.nupkg)"').Matches($html.Content) | Select-Object -First 1
-        if ($nupkgMatch) {
-            $filename = $nupkgMatch.Groups[1].Value
-            # If relative path, build full URL
-            if ($filename -notlike "http*") {
-                $url = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/$filename"
-            } else {
-                $url = $filename
-            }
-            Write-Log "[$Package] Found nupkg filename from page: $filename"
-            return $url
-        }
-    } catch {
-        Write-Log "[$Package] Version page scrape failed: $_" "WARN"
-    }
-
-    # Fallback: try both common Nexus nupkg URL formats
-    $urls = @(
-        # Format 1: lowercase package name in filename
-        "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version/$pkgLower.$Version.nupkg",
-        # Format 2: Nexus v2 NuGet endpoint
-        "$NexusBaseUrl/repository/$NexusRepo/v2/package/$Package/$Version",
-        # Format 3: v3 flat endpoint
-        "$NexusBaseUrl/repository/$NexusRepo/v3/flat2/$pkgLower/$Version/$pkgLower.$Version.nupkg"
-    )
-
-    foreach ($url in $urls) {
-        try {
-            Write-Log "[$Package] Trying URL format: $url"
-            $check = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
-            if ($check.StatusCode -eq 200) {
-                Write-Log "[$Package] Valid URL found: $url"
-                return $url
-            }
-        } catch {}
-    }
+    } catch { Write-Log "[$Package] Browse scrape error: $_" "WARN" }
 
     return $null
 }
 
 function Download-Nupkg {
     param([string]$Package, [string]$Version)
-    $dlPath = "$DownloadDir\$Package.$Version.nupkg"
+    $pkgLower  = $Package.ToLower()
+    $dlPath    = "$DownloadDir\$pkgLower-$Version.nupkg"
 
-    $url = Get-NupkgDownloadUrl -Package $Package -Version $Version
-    if (-not $url) {
-        Write-Log "[$Package] Could not determine valid download URL for $Version" "ERROR"
-        return $null
-    }
+    # Correct URL format confirmed from Nexus browser:
+    # https://nexus.bmwgroup.net/repository/nuget_proxy/microsoft.aspnetcore.app.runtime.win-x86/9.0.11
+    # The version folder IS the download endpoint - no trailing filename needed
+    $url = "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version"
 
-    Write-Log "[$Package] Downloading from: $url"
+    Write-Log "[$Package] Downloading $Version from: $url"
     try {
         Invoke-WebRequest -Uri $url -OutFile $dlPath -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
         $size = (Get-Item $dlPath -ErrorAction Stop).Length
@@ -161,11 +101,11 @@ function Download-Nupkg {
 }
 
 function Install-RuntimeFromNupkg {
-    param([string]$NupkgPath, [string]$Package, [string]$Version, [string]$Arch, [string]$TargetBase)
+    param([string]$NupkgPath, [string]$Package, [string]$Version, [string]$TargetBase)
     $targetDir  = "$TargetBase\$Version"
     $extractDir = "$DownloadDir\extracted\$Package.$Version"
 
-    Write-Log "[$Package] Extracting nupkg..."
+    Write-Log "[$Package] Extracting..."
     try {
         if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
         Expand-Archive -Path $NupkgPath -DestinationPath $extractDir -Force -ErrorAction Stop
@@ -174,7 +114,7 @@ function Install-RuntimeFromNupkg {
         return $false
     }
 
-    # Find folder with the most DLLs
+    # Find folder with the most DLLs - that is the runtime folder
     $runtimeSrc = Get-ChildItem $extractDir -Recurse -Directory |
                   Where-Object { (Get-ChildItem $_.FullName -Filter "*.dll" -ErrorAction SilentlyContinue).Count -gt 3 } |
                   Sort-Object  { (Get-ChildItem $_.FullName -Filter "*.dll").Count } -Descending |
@@ -234,6 +174,7 @@ foreach ($arch in @("x86", "x64")) {
         $failCount++
         continue
     }
+    Write-Log "[$pkg] Using Nexus version: $nexusVersion"
 
     # Backup
     foreach ($v in $vulnForArch) {
@@ -247,7 +188,7 @@ foreach ($arch in @("x86", "x64")) {
     $nupkgPath = Download-Nupkg -Package $pkg -Version $nexusVersion
     if (-not $nupkgPath) { $failCount++; continue }
 
-    $ok = Install-RuntimeFromNupkg -NupkgPath $nupkgPath -Package $pkg -Version $nexusVersion -Arch $arch -TargetBase $targetBase
+    $ok = Install-RuntimeFromNupkg -NupkgPath $nupkgPath -Package $pkg -Version $nexusVersion -TargetBase $targetBase
     if ($ok) { $successCount++ } else { $failCount++ }
 }
 
@@ -265,8 +206,7 @@ if ($nowSafe.Count -gt 0 -and $failCount -eq 0) {
 } elseif ($nowSafe.Count -gt 0 -and $failCount -gt 0) {
     Write-Log "--- PARTIAL: $successCount arch(s) done, $failCount failed. Check log. ---" "WARN"
 } else {
-    Write-Log "--- BLOCKED: Could not download required packages from Nexus. ---" "WARN"
-    Write-Log "Check Nexus manually:" "WARN"
+    Write-Log "--- BLOCKED: Could not download from Nexus. ---" "WARN"
     Write-Log "  $NexusBaseUrl/service/rest/repository/browse/$NexusRepo/microsoft.aspnetcore.app.runtime.win-x86/" "WARN"
     Write-Log "  $NexusBaseUrl/service/rest/repository/browse/$NexusRepo/microsoft.aspnetcore.app.runtime.win-x64/" "WARN"
 }
