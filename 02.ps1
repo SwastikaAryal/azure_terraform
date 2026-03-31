@@ -1,7 +1,7 @@
 param(
     [string]$NexusBaseUrl  = "https://nexus.bmwgroup.net",
     [string]$NexusRepo     = "nuget_proxy",
-    [string]$PackageName   = "NuGet.Packaging",
+    [string]$PackageName   = "nuget.packaging",
     [string]$MinVersion    = "5.11.6",
     [string]$TargetPath    = "E:\Octopus\Tools\Calamari.win-x64",
     [string]$LogFile       = "C:\Temp\NuGetPackaging_Update_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -70,20 +70,9 @@ function Get-BestNexusVersion {
 function Get-NupkgUrl {
     param([string]$Package, [string]$Version)
     $pkgLower = $Package.ToLower()
-
-    # Scrape version page for actual filename (most reliable)
-    try {
-        $html  = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/" -UseBasicParsing -TimeoutSec 30
-        $match = ([regex]'href="([^"]*\.nupkg)"').Matches($html.Content) | Select-Object -First 1
-        if ($match) {
-            $href = $match.Groups[1].Value
-            if ($href -like "http*") { return $href }
-            return "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/$href"
-        }
-    } catch { Write-Log "Version page scrape failed: $_" "WARN" }
-
-    # Fallback: standard Nexus download path
-    return "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version/$pkgLower.$Version.nupkg"
+    # Confirmed filename format from Nexus browser:
+    # nuget.packaging-6.3.1.nupkg  (hyphen between package and version)
+    return "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version/$pkgLower-$Version.nupkg"
 }
 
 function Get-CurrentVersion {
