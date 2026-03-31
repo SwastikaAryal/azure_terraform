@@ -1,1 +1,2 @@
-Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/microsoft.aspnetcore.app.runtime.win-x86/9.0.11/" -UseBasicParsing | Select-Object -ExpandProperty Links
+Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/nuget.packaging/6.3.1/nuget.packaging-6.3.1.nupkg" -UseBasicParsing -OutFile "C:\Temp\test.nupkg"
+(Get-Item "C:\Temp\test.nupkg").Length
