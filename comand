@@ -1,2 +1,2 @@
 $html = Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/nuget.packaging/6.3.1/" -UseBasicParsing
-$html.Links | Where-Object { $_.href -like "*.nupkg" } | Select-Object href
+$html.RawContent | Select-String "nupkg"
