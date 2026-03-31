@@ -103,7 +103,7 @@ Write-Log "--- KestrelCore Update | CVE-2025-55315 | Machine: $env:COMPUTERNAME 
 Write-Log "Safe versions: 2.x -> 2.3.6 | 8.x -> 8.0.21"
 
 # Find ALL Kestrel installs under Plugins folder
-$installs = Find-AllKestrelInstalls
+[array]$installs = @(Find-AllKestrelInstalls)
 if ($installs.Count -eq 0) {
     Write-Log "No Kestrel installs found under $PluginBase. No action needed." "SUCCESS"
     exit 0
@@ -112,7 +112,7 @@ if ($installs.Count -eq 0) {
 Write-Log "Found $($installs.Count) Kestrel installation(s):"
 foreach ($i in $installs) { Write-Log "  Version: $($i.Version) | Path: $($i.DepsFile)" }
 
-$vulnerable = $installs | Where-Object { Is-Vulnerable $_.Version }
+[array]$vulnerable = @($installs | Where-Object { Is-Vulnerable $_.Version })
 if ($vulnerable.Count -eq 0) {
     Write-Log "All installations are already at safe versions. No action needed." "SUCCESS"
     exit 0
@@ -176,7 +176,7 @@ foreach ($install in $vulnerable) {
 
 # Verify all installs
 Write-Log "--- Verification ---"
-$postInstalls = Find-AllKestrelInstalls
+[array]$postInstalls = @(Find-AllKestrelInstalls)
 foreach ($i in $postInstalls) {
     if (Is-Vulnerable $i.Version) {
         Write-Log "STILL VULNERABLE: $($i.Version) at $($i.DepsFile)" "WARN"
@@ -185,7 +185,7 @@ foreach ($i in $postInstalls) {
     }
 }
 
-$stillVuln = $postInstalls | Where-Object { Is-Vulnerable $_.Version }
+[array]$stillVuln = @($postInstalls | Where-Object { Is-Vulnerable $_.Version })
 if ($stillVuln.Count -eq 0) {
     Write-Log "--- SUCCESS: All Kestrel installs patched on $env:COMPUTERNAME ---" "SUCCESS"
 } elseif ($successCount -gt 0) {
