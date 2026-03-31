@@ -115,7 +115,9 @@ $nupkgUrl = Get-NupkgUrl -Package $PackageName -Version $nexusVersion
 $dlPath   = "C:\Temp\$PackageName.$nexusVersion.nupkg"
 Write-Log "Downloading from: $nupkgUrl"
 try {
-    Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -TimeoutSec 120
+    $webClient = New-Object System.Net.WebClient
+
+    $webClient.DownloadFile($nupkgUrl, $dlPath)
     $size = (Get-Item $dlPath).Length
     Write-Log "Downloaded -> $dlPath ($size bytes)"
 } catch {
