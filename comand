@@ -1,1 +1,1 @@
-Invoke-RestMethod "https://nexus.bmwgroup.net/service/rest/v1/search?repository=nuget_proxy&name=Microsoft.AspNetCore.App.Runtime.win-x86&sort=version&direction=desc" | Select-Object -ExpandProperty items | Select-Object version | Where-Object { $_.version -like "8.*" }
+Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/Microsoft.AspNetCore.App.Runtime.win-x86/8.0.21/" -UseBasicParsing
