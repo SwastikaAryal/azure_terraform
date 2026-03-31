@@ -1,0 +1,20 @@
+01 — NuGet.Packaging | CVE-2024-0057
+Automatically downloads patched NuGet.Packaging 6.3.1 from BMW Nexus and replaces the vulnerable DLL in Octopus/Calamari on affected VMs.
+02 — Kestrel Core | CVE-2025-55315
+Scans all VMs for vulnerable Kestrel Core versions (2.x and 8.x), downloads the patched version from BMW Nexus, and updates automatically.
+03 — SemanticKernel | CVE-2026-25592
+Downloads patched Microsoft.SemanticKernel.Core from BMW Nexus and updates the SSMA for MySQL installation — pending Nexus admin caching the package.
+04 — Edge Chromium | CVE-2026-3916
+Uses built-in Windows Update to check and install the latest Edge version — no Nexus required, safe to run on any VM.
+05 — Commons Collections | CVE-2015-7501
+Downloads patched commons-collections JAR from BMW Nexus maven-central and replaces the vulnerable JAR in SQL Server SSIS extensions.
+06 — Apache Avro | CVE-2024-47561
+Downloads patched Avro JAR from BMW Nexus maven-central and replaces the vulnerable JAR in SQL Server SSIS extensions.
+07 — Libcurl | CVE-2023-38545 + CVE-2019-3822
+Replaces vulnerable libcurl.dll in FIS Ambit with a patched version — fixes two critical CVEs in one run once patched DLL is staged.
+08 — Hadoop Common | CVE-2022-26612
+Downloads patched hadoop-common JAR from BMW Nexus maven-central and replaces the vulnerable JAR in SQL Server SSIS extensions.
+09 — Windows Server 2022 | CVE-2026-20822
+Uses built-in Windows Update/WSUS to apply the latest cumulative security patch — no Nexus required, requires WSUS configured on the VM.
+10 — AspNetCore Runtime | CVE-2025-55315
+Detects and patches both x86 and x64 vulnerable ASP.NET Core runtime installations in a single run by downloading from BMW Nexus.
