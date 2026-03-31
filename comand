@@ -1,1 +1,1 @@
-Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/Microsoft.AspNetCore.App.Runtime.win-x86/8.0.21/" -UseBasicParsing
+Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/microsoft.aspnetcore.app.runtime.win-x86/9.0.11/" -UseBasicParsing | Select-Object -ExpandProperty Links
