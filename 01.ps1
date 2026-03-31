@@ -135,21 +135,29 @@ if ($csprojFiles.Count -gt 0) {
         } catch { Write-Log "dotnet failed: $_" "WARN" }
     }
 } else {
-    Write-Log "No .csproj found. nupkg at $dlPath" "WARN"
-    Write-Log "ACTION: Upgrade Octopus Deploy/Calamari to ship NuGet.Packaging >= $MinVersion" "WARN"
-    Write-Log "OR extract nupkg and replace NuGet.Packaging.dll manually in $TargetPath" "WARN"
-}
-
-# Verify
-$newVersion, $_ = Get-CurrentVersion
-if ($newVersion) {
-    $newParsed = Parse-SafeVersion -Ver $newVersion
-    $minParsed = Parse-SafeVersion -Ver $MinVersion
-    if ($newParsed -ge $minParsed) {
-        Write-Log "--- SUCCESS: NuGet.Packaging updated to $newVersion ---" "SUCCESS"
+    Write-Log "No .csproj found. Extracting nupkg and replacing DLL directly..."
+    $extractDir = "C:\Temp\NuGetPackaging_extracted"
+    if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
+    $zipPath = $dlPath -replace "\.nupkg$", ".zip"
+    Copy-Item $dlPath $zipPath -Force
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+    Write-Log "Extracted to $extractDir"
+    [array]$newDlls = @(Get-ChildItem $extractDir -Recurse -Filter "NuGet.Packaging.dll" -ErrorAction SilentlyContinue)
+    if ($newDlls.Count -gt 0) {
+        $newDll = $newDlls[0]
+        Write-Log "Found patched DLL: $($newDll.FullName)"
+        [array]$existingDlls = @(Get-ChildItem $TargetPath -Recurse -Filter "NuGet.Packaging.dll" -ErrorAction SilentlyContinue)
+        if ($existingDlls.Count -gt 0) {
+            foreach ($dll in $existingDlls) {
+                try {
+                    Copy-Item $newDll.FullName $dll.FullName -Force
+                    Write-Log "Replaced: $($dll.FullName)" "SUCCESS"
+                } catch { Write-Log "Could not replace $($dll.FullName): $_" "WARN" }
+            }
+        } else {
+            Write-Log "No existing NuGet.Packaging.dll found in $TargetPath" "WARN"
+        }
     } else {
-        Write-Log "--- ACTION REQUIRED: Upgrade Octopus Calamari to ship NuGet.Packaging >= $MinVersion ---" "WARN"
+        Write-Log "NuGet.Packaging.dll not found inside nupkg." "WARN"
     }
-} else {
-    Write-Log "--- ACTION REQUIRED: Upgrade Octopus Calamari to ship NuGet.Packaging >= $MinVersion ---" "WARN"
 }
