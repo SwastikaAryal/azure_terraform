@@ -1,2 +1,1 @@
-$html = Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/nuget.packaging/6.3.1/" -UseBasicParsing
-$html.RawContent | Select-String "nupkg"
+Invoke-WebRequest "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/nuget.packaging/6.3.1/" -UseBasicParsing | Select-Object -ExpandProperty RawContent | Select-String "repository/nuget_proxy"
