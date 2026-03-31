@@ -1,15 +1,18 @@
-Set-Content -Path "C:\Users\fsamdevmadmin\Desktop\02.ps1" -Encoding UTF8 -Value @'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-
 param(
     [string]$NexusBaseUrl   = "https://nexus.bmwgroup.net",
     [string]$NexusRepo      = "nuget_proxy",
     [string]$PackageName    = "Microsoft.AspNetCore.Server.Kestrel.Core",
-    [string]$MinSafeVersion = "8.0.21",
-    [string]$PluginBase     = "C:\Packages\Plugins\Microsoft.SqlServer.Management.SqlIaaSAgent",
+    [string]$PluginBase     = "C:\Packages\Plugins",
     [string]$LogFile        = "C:\Temp\KestrelCore_Update_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 )
+
+# Safe versions per major branch based on Wiz findings:
+# Branch 2.x -> fixed at 2.3.6
+# Branch 8.x -> fixed at 8.0.21
+$SafeVersionMap = @{
+    "2" = "2.3.6"
+    "8" = "8.0.21"
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -21,100 +24,172 @@ function Write-Log {
     Add-Content -Path $LogFile -Value $entry
 }
 
+function Get-SafeVersion {
+    param([string]$CurrentVersion)
+    try {
+        $major = ([version]$CurrentVersion).Major.ToString()
+        if ($SafeVersionMap.ContainsKey($major)) { return $SafeVersionMap[$major] }
+    } catch {}
+    # Default to latest 8.x if unknown
+    return "8.0.21"
+}
+
 function Get-LatestNexusVersion {
     param([string]$Package, [string]$MinVersion)
-    Write-Log "Trying Nexus REST API..."
+    $pkgLower = $Package.ToLower()
     try {
-        $searchUrl = "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc"
-        $resp = Invoke-RestMethod -Uri $searchUrl -UseBasicParsing -TimeoutSec 30
-        $safe = $resp.items | ForEach-Object { $_.version } |
+        $resp = Invoke-RestMethod -Uri "$NexusBaseUrl/service/rest/v1/search?repository=$NexusRepo&name=$Package&sort=version&direction=desc" -UseBasicParsing -TimeoutSec 30
+        $ver  = $resp.items | ForEach-Object { $_.version } |
                 Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
-                Sort-Object { [version]$_ } -Descending |
+                Sort-Object  { [version]$_ } -Descending |
                 Where-Object { [version]$_ -ge [version]$MinVersion } |
                 Select-Object -First 1
-        if ($safe) { Write-Log "Found via REST API: $safe"; return $safe }
-        Write-Log "REST API returned no version >= $MinVersion" "WARN"
-    } catch {
-        Write-Log "Nexus REST API error: $_" "WARN"
-    }
-    Write-Log "Trying Nexus browse page scrape..."
+        if ($ver) { Write-Log "REST API found: $Package $ver"; return $ver }
+        Write-Log "REST API: no version >= $MinVersion" "WARN"
+    } catch { Write-Log "REST API error: $_" "WARN" }
     try {
-        $browseUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$Package/"
-        $html = Invoke-WebRequest -Uri $browseUrl -UseBasicParsing -TimeoutSec 30
-        $safe = ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
-               ForEach-Object { $_.Groups[1].Value } |
-               Where-Object { [version]$_ -ge [version]$MinVersion } |
-               Sort-Object { [version]$_ } -Descending |
-               Select-Object -First 1
-        if ($safe) { Write-Log "Found via browse scrape: $safe"; return $safe }
-        Write-Log "Browse scrape returned no version >= $MinVersion" "WARN"
-    } catch {
-        Write-Log "Nexus browse scrape error: $_" "WARN"
-    }
+        $html = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/" -UseBasicParsing -TimeoutSec 30
+        $ver  = ([regex]'href="(\d+\.\d+\.\d+)/"').Matches($html.Content) |
+                ForEach-Object { $_.Groups[1].Value } |
+                Where-Object   { [version]$_ -ge [version]$MinVersion } |
+                Sort-Object    { [version]$_ } -Descending |
+                Select-Object  -First 1
+        if ($ver) { Write-Log "Browse scrape found: $Package $ver"; return $ver }
+        Write-Log "Browse scrape: no version >= $MinVersion" "WARN"
+    } catch { Write-Log "Browse scrape error: $_" "WARN" }
     return $null
 }
 
-function Get-CurrentKestrelVersion {
+function Get-NupkgUrl {
+    param([string]$Package, [string]$Version)
+    $pkgLower = $Package.ToLower()
+    try {
+        $html  = Invoke-WebRequest -Uri "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/" -UseBasicParsing -TimeoutSec 30
+        $match = ([regex]'href="([^"]*\.nupkg)"').Matches($html.Content) | Select-Object -First 1
+        if ($match) { return "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$pkgLower/$Version/$($match.Groups[1].Value)" }
+    } catch {}
+    return "$NexusBaseUrl/repository/$NexusRepo/$pkgLower/$Version/$pkgLower.$Version.nupkg"
+}
+
+function Find-AllKestrelInstalls {
     $depsFiles = Get-ChildItem -Path $PluginBase -Recurse -Filter "*.deps.json" -ErrorAction SilentlyContinue
+    $results   = @()
     foreach ($f in $depsFiles) {
-        $content = Get-Content $f.FullName -Raw
-        if ($content -match '"Microsoft\.AspNetCore\.Server\.Kestrel\.Core/([\d\.]+)"') {
-            return $Matches[1], $f.FullName
+        $c = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+        if ($c -match '"Microsoft\.AspNetCore\.Server\.Kestrel\.Core/([\d\.]+)"') {
+            $results += [PSCustomObject]@{
+                Version  = $Matches[1]
+                DepsFile = $f.FullName
+                CsprojDir= $f.DirectoryName
+            }
         }
     }
-    return $null, $null
+    return $results
 }
 
+function Is-Vulnerable {
+    param([string]$Version)
+    try {
+        $major = ([version]$Version).Major
+        if ($major -eq 2) { return [version]$Version -le [version]"2.3.0" }
+        if ($major -eq 8) { return [version]$Version -le [version]"8.0.20" }
+        return $false
+    } catch { return $false }
+}
+
+# ── MAIN ──
 New-Item -ItemType Directory -Path (Split-Path $LogFile) -Force | Out-Null
-Write-Log "--- Kestrel.Core Update Started | CVE-2025-55315 | Min safe: $MinSafeVersion ---"
+Write-Log "--- KestrelCore Update | CVE-2025-55315 | Machine: $env:COMPUTERNAME ---"
+Write-Log "Safe versions: 2.x -> 2.3.6 | 8.x -> 8.0.21"
 
-$latestVersion = Get-LatestNexusVersion -Package $PackageName -MinVersion $MinSafeVersion
-if (-not $latestVersion) { Write-Log "No version >= $MinSafeVersion found in Nexus. Aborting." "ERROR"; exit 1 }
-Write-Log "Target version: $latestVersion"
-
-$currentVersion, $depsPath = Get-CurrentKestrelVersion
-if ($currentVersion) {
-    Write-Log "Current version: $currentVersion"
-    if ([version]$currentVersion -ge [version]$latestVersion) { Write-Log "Already at $currentVersion. No action needed." "SUCCESS"; exit 0 }
-} else {
-    Write-Log "Could not detect current version from deps.json." "WARN"
+# Find ALL Kestrel installs under Plugins folder
+$installs = Find-AllKestrelInstalls
+if ($installs.Count -eq 0) {
+    Write-Log "No Kestrel installs found under $PluginBase. No action needed." "SUCCESS"
+    exit 0
 }
 
-if ($depsPath) {
+Write-Log "Found $($installs.Count) Kestrel installation(s):"
+foreach ($i in $installs) { Write-Log "  Version: $($i.Version) | Path: $($i.DepsFile)" }
+
+$vulnerable = $installs | Where-Object { Is-Vulnerable $_.Version }
+if ($vulnerable.Count -eq 0) {
+    Write-Log "All installations are already at safe versions. No action needed." "SUCCESS"
+    exit 0
+}
+
+Write-Log "Found $($vulnerable.Count) vulnerable installation(s):"
+foreach ($v in $vulnerable) { Write-Log "  VULNERABLE: $($v.Version) at $($v.DepsFile)" "WARN" }
+
+$successCount = 0
+$failCount    = 0
+
+foreach ($install in $vulnerable) {
+    $currentVer  = $install.Version
+    $safeVersion = Get-SafeVersion -CurrentVersion $currentVer
+    Write-Log "--- Remediating $currentVer -> $safeVersion ---"
+
+    # Backup deps.json
     $backupDir = "C:\Temp\KestrelCore_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-    Copy-Item $depsPath "$backupDir\" -Force
-    Write-Log "Backed up $depsPath -> $backupDir"
+    Copy-Item $install.DepsFile "$backupDir\" -Force
+    Write-Log "Backed up -> $backupDir"
+
+    # Get version from Nexus
+    $nexusVersion = Get-LatestNexusVersion -Package $PackageName -MinVersion $safeVersion
+    if (-not $nexusVersion) {
+        Write-Log "$PackageName $safeVersion not in Nexus. Ask admin to cache it in $NexusRepo." "ERROR"
+        $failCount++
+        continue
+    }
+    Write-Log "Nexus version to install: $nexusVersion"
+
+    # Download nupkg
+    $nupkgUrl = Get-NupkgUrl -Package $PackageName -Version $nexusVersion
+    $dlPath   = "C:\Temp\$PackageName.$nexusVersion.nupkg"
+    Write-Log "Downloading from: $nupkgUrl"
+    try {
+        Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -UseBasicParsing -TimeoutSec 120
+        Write-Log "Downloaded -> $dlPath ($((Get-Item $dlPath).Length) bytes)"
+    } catch {
+        Write-Log "Download failed: $_" "ERROR"
+        $failCount++
+        continue
+    }
+
+    # Try dotnet add package in the same directory as the deps.json
+    $csprojFiles = Get-ChildItem -Path $install.CsprojDir -Filter "*.csproj" -ErrorAction SilentlyContinue
+    if ($csprojFiles) {
+        foreach ($proj in $csprojFiles) {
+            try {
+                Write-Log "Running: dotnet add $($proj.FullName) package $PackageName --version $nexusVersion"
+                & dotnet add $proj.FullName package $PackageName --version $nexusVersion 2>&1 | ForEach-Object { Write-Log $_ }
+                $successCount++
+            } catch { Write-Log "dotnet failed: $_" "WARN" }
+        }
+    } else {
+        Write-Log "No .csproj in $($install.CsprojDir). nupkg at $dlPath for manual replacement." "WARN"
+        Write-Log "ACTION: Update SqlIaaSAgent extension via Azure Portal -> VM -> Extensions -> SqlIaaSAgent -> Update" "WARN"
+        $failCount++
+    }
 }
 
-$azAvailable = Get-Command az -ErrorAction SilentlyContinue
-if ($azAvailable) {
-    try {
-        $vmMeta = Invoke-RestMethod -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -Headers @{Metadata="true"} -UseBasicParsing -TimeoutSec 10
-        & az vm extension set --resource-group $vmMeta.compute.resourceGroupName --vm-name $vmMeta.compute.name --name "SqlIaaSAgent" --publisher "Microsoft.SqlServer.Management" --force-update 2>&1 | ForEach-Object { Write-Log $_ }
-        Write-Log "Azure CLI extension update triggered."
-    } catch { Write-Log "Azure CLI method failed: $_" "WARN" }
-} else { Write-Log "Azure CLI not found. Skipping." "WARN" }
-
-$nupkgUrl = "$NexusBaseUrl/service/rest/repository/browse/$NexusRepo/$PackageName/$latestVersion/$PackageName.$latestVersion.nupkg"
-$dlPath = "C:\Temp\$PackageName.$latestVersion.nupkg"
-Write-Log "Downloading nupkg from: $nupkgUrl"
-try {
-    Invoke-WebRequest -Uri $nupkgUrl -OutFile $dlPath -UseBasicParsing -TimeoutSec 120
-    Write-Log "Downloaded -> $dlPath ($((Get-Item $dlPath).Length) bytes)"
-} catch { Write-Log "Nexus download failed: $_" "ERROR" }
-
-$csprojFiles = Get-ChildItem -Path $PluginBase -Recurse -Filter "*.csproj" -ErrorAction SilentlyContinue
-foreach ($proj in $csprojFiles) {
-    try {
-        & dotnet add $proj.FullName package $PackageName --version $latestVersion 2>&1 | ForEach-Object { Write-Log $_ }
-    } catch { Write-Log "dotnet update failed for $($proj.Name): $_" "WARN" }
+# Verify all installs
+Write-Log "--- Verification ---"
+$postInstalls = Find-AllKestrelInstalls
+foreach ($i in $postInstalls) {
+    if (Is-Vulnerable $i.Version) {
+        Write-Log "STILL VULNERABLE: $($i.Version) at $($i.DepsFile)" "WARN"
+    } else {
+        Write-Log "SAFE: $($i.Version) at $($i.DepsFile)" "SUCCESS"
+    }
 }
 
-$newVersion, $_ = Get-CurrentKestrelVersion
-if ($newVersion -and ([version]$newVersion -ge [version]$MinSafeVersion)) {
-    Write-Log "SUCCESS: Kestrel.Core updated to $newVersion" "SUCCESS"
+$stillVuln = $postInstalls | Where-Object { Is-Vulnerable $_.Version }
+if ($stillVuln.Count -eq 0) {
+    Write-Log "--- SUCCESS: All Kestrel installs patched on $env:COMPUTERNAME ---" "SUCCESS"
+} elseif ($successCount -gt 0) {
+    Write-Log "--- PARTIAL: $successCount patched, $failCount need manual Azure Portal update ---" "WARN"
 } else {
-    Write-Log "ACTION REQUIRED: Azure Portal -> VM (fs-msl-app1) -> Extensions + Applications -> SqlIaaSAgent -> Update" "WARN"
+    Write-Log "--- ACTION REQUIRED: Update SqlIaaSAgent via Azure Portal -> VM -> Extensions -> SqlIaaSAgent -> Update ---" "WARN"
 }
-'@
