@@ -1,1 +1,16 @@
-The script requires three PowerShell modules: Az.Accounts, Az.Compute, and ImportExcel. Normally these are installed from PowerShell Gallery (PSGallery), but our machine has no direct internet access and PSGallery is not registered or reachable.
+resources
+| where type == "microsoft.compute/virtualmachines"
+| extend patchMode = coalesce(
+    properties.osProfile.windowsConfiguration.patchSettings.patchMode,
+    properties.osProfile.linuxConfiguration.patchSettings.patchMode)
+| extend assessmentMode = coalesce(
+    properties.osProfile.windowsConfiguration.patchSettings.assessmentMode,
+    properties.osProfile.linuxConfiguration.patchSettings.assessmentMode)
+| extend enableAutoUpdates = properties.osProfile.windowsConfiguration.enableAutomaticUpdates
+| extend osType = properties.storageProfile.osDisk.osType
+| extend compliance = case(
+    patchMode == "AutomaticByPlatform" and assessmentMode == "AutomaticByPlatform", "Compliant",
+    patchMode == "AutomaticByPlatform" or assessmentMode == "AutomaticByPlatform", "Partial",
+    "Non-Compliant")
+| project name, resourceGroup, subscriptionId, location, osType, patchMode, assessmentMode, enableAutoUpdates, compliance
+| order by compliance asc, name asc
