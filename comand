@@ -1,9 +1,12 @@
-Register-PSRepository -Default -InstallationPolicy Trusted
-Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-
-Install-Module -Name Az.Accounts -Repository PSGallery -Force -AllowClobber -Scope AllUsers
-
-Install-Module -Name Az.Accounts -Repository PSGallery -Force -AllowClobber -Scope CurrentUser
-
-Get-Module -ListAvailable Az.Accounts
-Import-Module Az.Accounts
+Step 1: Register the Nexus NuGet proxy as a PSRepository
+powershellRegister-PSRepository -Name "NexusPS" `
+    -SourceLocation "https://nexus.bmwgroup.net/service/rest/repository/browse/nuget_proxy/" `
+    -InstallationPolicy Trusted
+If that doesn't work, try the NuGet v2 API endpoint format:
+powershellRegister-PSRepository -Name "NexusPS" `
+    -SourceLocation "https://nexus.bmwgroup.net/repository/nuget_proxy/" `
+    -InstallationPolicy Trusted
+Step 2: Search if Az.Accounts is available
+powershellFind-Module -Name Az.Accounts -Repository NexusPS
+Step 3: Install
+powershellInstall-Module -Name Az.Accounts -Repository NexusPS -Force -AllowClobber -Scope AllUs
