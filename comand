@@ -1,2 +1,9 @@
-Invoke-WebRequest "https://nexus.bmwgroup.net/repository/nuget_proxy/nuget.packaging/6.3.1" -OutFile "C:\Temp\test.nupkg" -UseBasicParsing
-(Get-Item "C:\Temp\test.nupkg").Length
+Register-PSRepository -Default -InstallationPolicy Trusted
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+
+Install-Module -Name Az.Accounts -Repository PSGallery -Force -AllowClobber -Scope AllUsers
+
+Install-Module -Name Az.Accounts -Repository PSGallery -Force -AllowClobber -Scope CurrentUser
+
+Get-Module -ListAvailable Az.Accounts
+Import-Module Az.Accounts
