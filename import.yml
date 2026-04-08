@@ -1,0 +1,140 @@
+- name: Terraform Init
+  working-directory: ./terraform/env/ccg
+  run: terraform init -input=false
+
+- name: Terraform Import
+  working-directory: ./terraform/env/ccg
+  run: |
+    SUB="4cda8977-68ea-4ca5-aa6a-fae45e7e98f3"
+    RG="FSAM-CLEANCONFIG-RG"
+
+    terraform import 'azurerm_resource_group.application_rg' "/subscriptions/$SUB/resourceGroups/$RG"
+    
+    terraform import 'module.central_managed_identity.azurerm_user_assigned_identity.user_identity' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fsamccg2-uai"
+    
+    terraform import 'module.application_automation_account.azurerm_automation_account.automation_account' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Automation/automationAccounts/fsamccg2-aa-auto"
+    
+    terraform import 'azurerm_automation_connection_type.environment_connection_types["Azure"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Automation/automationAccounts/fsamccg2-aa-auto/connectionTypes/Azure"
+    
+    terraform import 'azurerm_automation_connection_type.environment_connection_types["AzureClassicCertificate"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Automation/automationAccounts/fsamccg2-aa-auto/connectionTypes/AzureClassicCertificate"
+    
+    terraform import 'azurerm_automation_connection_type.environment_connection_types["AzureServicePrincipal"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Automation/automationAccounts/fsamccg2-aa-auto/connectionTypes/AzureServicePrincipal"
+    
+    terraform import 'module.critical_alerts_action_group.azurerm_monitor_action_group.action_group' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Insights/actionGroups/fsamccg2-critical-ag"
+    
+    terraform import 'module.warning_alerts_action_group.azurerm_monitor_action_group.action_group' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Insights/actionGroups/fsamccg2-warning-ag"
+    
+    terraform import 'module.application_log_analytics.azurerm_application_insights.explicit_app_insights[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Insights/components/fsam-ccg-2-aapin"
+    
+    terraform import 'module.application_log_analytics.module.bmw_log_analytics_workspace.azurerm_log_analytics_workspace.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.OperationalInsights/workspaces/fsamccg-law"
+    
+    terraform import 'module.application_storage_account.module.bmw_storage_account.azurerm_storage_account.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/fsamccgstprivatebmw"
+    
+    terraform import 'module.application_key_vault.module.bmw_key_vault.azurerm_key_vault.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.KeyVault/vaults/fsamccg2-kv"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb.load_balancer' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb_backend_address_pool.backend_pool["bepool-fsamccg2-vm"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app/backendAddressPools/bepool-fsamccg2-vm"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb_probe.probe["probe-http-fsamccg2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app/probes/probe-http-fsamccg2"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb_probe.probe["probe-https-fsamccg2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app/probes/probe-https-fsamccg2"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb_rule.rule["lbrul-http-fsamccg2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app/loadBalancingRules/lbrul-http-fsamccg2"
+    
+    terraform import 'module.application_load_balancer.azurerm_lb_rule.rule["lbrul-https-fsamccg2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/loadBalancers/fsamccg2-lb-app/loadBalancingRules/lbrul-https-fsamccg2"
+    
+    terraform import 'module.application_storage_private_endpoints["file"].azurerm_private_endpoint.pe' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/privateEndpoints/fsamccgstprivatebmw-pe-file"
+    
+    terraform import 'module.automation_agentsvc_private_endpoint["Webhook"].azurerm_private_endpoint.pe' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/privateEndpoints/fsamccg2-aa-auto-pe-agentsvc-Webhook"
+    
+    terraform import 'module.standalone_managed_disks["fs-ccg-app1-datadisk"].azurerm_managed_disk.disk' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/disks/fsamdatadiskfs-ccg-app1winvm"
+    
+    terraform import 'module.standalone_managed_disks["fs-ccg-app2-datadisk"].azurerm_managed_disk.disk' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/disks/fsamdatadiskfs-ccg-app2winvm"
+    
+    terraform import 'module.standalone_managed_disks["fs-ccg-web1-datadisk"].azurerm_managed_disk.disk' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/disks/fsamdatadiskfs-ccg-web1winvm"
+    
+    terraform import 'module.standalone_managed_disks["fs-ccg-web2-datadisk"].azurerm_managed_disk.disk' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/disks/fsamdatadiskfs-ccg-web2winvm"
+    
+    terraform import 'azurerm_virtual_machine_data_disk_attachment.disk_attachments["fs-ccg-app1-datadisk"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1/dataDisks/fsamdatadiskfs-ccg-app1winvm"
+    
+    terraform import 'azurerm_virtual_machine_data_disk_attachment.disk_attachments["fs-ccg-app2-datadisk"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app2/dataDisks/fsamdatadiskfs-ccg-app2winvm"
+    
+    terraform import 'azurerm_virtual_machine_data_disk_attachment.disk_attachments["fs-ccg-web1-datadisk"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1/dataDisks/fsamdatadiskfs-ccg-web1winvm"
+    
+    terraform import 'azurerm_virtual_machine_data_disk_attachment.disk_attachments["fs-ccg-web2-datadisk"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2/dataDisks/fsamdatadiskfs-ccg-web2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app1"].module.bmw_vm.module.windows_vm[0].azurerm_windows_virtual_machine.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1"
+    
+    terraform import 'module.application_vms["fs-ccg-app2"].module.bmw_vm.module.windows_vm[0].azurerm_windows_virtual_machine.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app2"
+    
+    terraform import 'module.application_vms["fs-ccg-web1"].module.bmw_vm.module.windows_vm[0].azurerm_windows_virtual_machine.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1"
+    
+    terraform import 'module.application_vms["fs-ccg-web2"].module.bmw_vm.module.windows_vm[0].azurerm_windows_virtual_machine.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2"
+    
+    terraform import 'module.application_vms["fs-ccg-app1"].module.bmw_vm.azurerm_network_interface.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-app1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app2"].module.bmw_vm.azurerm_network_interface.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-app2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web1"].module.bmw_vm.azurerm_network_interface.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-web1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web2"].module.bmw_vm.azurerm_network_interface.this' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-web2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app1"].module.bmw_vm.azurerm_network_security_group.nsg[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-app1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app2"].module.bmw_vm.azurerm_network_security_group.nsg[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-app2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web1"].module.bmw_vm.azurerm_network_security_group.nsg[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-web1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web2"].module.bmw_vm.azurerm_network_security_group.nsg[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-web2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app1"].module.bmw_vm.azurerm_network_interface_security_group_association.nsg_association' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-app1winvm|/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-app1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app2"].module.bmw_vm.azurerm_network_interface_security_group_association.nsg_association' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-app2winvm|/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-app2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web1"].module.bmw_vm.azurerm_network_interface_security_group_association.nsg_association' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-web1winvm|/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-web1winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-web2"].module.bmw_vm.azurerm_network_interface_security_group_association.nsg_association' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkInterfaces/nic-fsamfs-ccg-web2winvm|/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Network/networkSecurityGroups/nsg-fsamfs-ccg-web2winvm"
+    
+    terraform import 'module.application_vms["fs-ccg-app1"].module.bmw_vm.azurerm_user_assigned_identity.this[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fsamfs-ccg-app1winvm-ua-id"
+    
+    terraform import 'module.application_vms["fs-ccg-app2"].module.bmw_vm.azurerm_user_assigned_identity.this[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fsamfs-ccg-app2winvm-ua-id"
+    
+    terraform import 'module.application_vms["fs-ccg-web1"].module.bmw_vm.azurerm_user_assigned_identity.this[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fsamfs-ccg-web1winvm-ua-id"
+    
+    terraform import 'module.application_vms["fs-ccg-web2"].module.bmw_vm.azurerm_user_assigned_identity.this[0]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fsamfs-ccg-web2winvm-ua-id"
+    
+    terraform import 'azurerm_virtual_machine_extension.enable_vm_access["fs-ccg-app1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1/extensions/enablevmAccess"
+    
+    terraform import 'azurerm_virtual_machine_extension.aad_login["fs-ccg-app1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1/extensions/AADLogin"
+    
+    terraform import 'azurerm_virtual_machine_extension.aad_login["fs-ccg-app2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app2/extensions/AADLogin"
+    
+    terraform import 'azurerm_virtual_machine_extension.aad_login["fs-ccg-web1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1/extensions/AADLogin"
+    
+    terraform import 'azurerm_virtual_machine_extension.aad_login["fs-ccg-web2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2/extensions/AADLogin"
+    
+    terraform import 'azurerm_virtual_machine_extension.iis_installer["fs-ccg-web1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1/extensions/IIS"
+    
+    terraform import 'azurerm_virtual_machine_extension.iis_installer["fs-ccg-web2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2/extensions/IIS"
+    
+    terraform import 'azurerm_virtual_machine_extension.mde_windows["fs-ccg-app1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1/extensions/MDE.Windows"
+    
+    terraform import 'azurerm_virtual_machine_extension.mde_windows["fs-ccg-app2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app2/extensions/MDE.Windows"
+    
+    terraform import 'azurerm_virtual_machine_extension.mde_windows["fs-ccg-web1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1/extensions/MDE.Windows"
+    
+    terraform import 'azurerm_virtual_machine_extension.mde_windows["fs-ccg-web2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2/extensions/MDE.Windows"
+    
+    terraform import 'azurerm_virtual_machine_extension.azure_policy["fs-ccg-app1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app1/extensions/AzurePolicyforWindows"
+    
+    terraform import 'azurerm_virtual_machine_extension.azure_policy["fs-ccg-app2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-app2/extensions/AzurePolicyforWindows"
+    
+    terraform import 'azurerm_virtual_machine_extension.azure_policy["fs-ccg-web1"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web1/extensions/AzurePolicyforWindows"
+    
+    terraform import 'azurerm_virtual_machine_extension.azure_policy["fs-ccg-web2"]' "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-ccg-web2/extensions/AzurePolicyforWindows"
+
+    echo "========================================"
+    echo "All imports done. Resources in state:"
+    terraform state list
+    echo "Total: $(terraform state list | wc -l) resources"
