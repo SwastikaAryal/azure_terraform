@@ -1,0 +1,7 @@
+Azure Network Architecture Review — Business Risk Summary
+Following the architecture review for the FIS three-tier application, four networking changes were recommended. Here is a quick business risk snapshot:
+Enable Accelerated Networking — Low risk. Straightforward performance improvement requiring only a brief planned reboot per VM. Recommended to proceed.
+Proximity Placement Groups (PPGs) — Moderate risk. Improves application speed but concentrates all resources in one physical location, reducing resilience. Fine for lower environments; needs deliberate sign-off before production.
+Single Zone Consolidation — High risk. Best latency but no redundancy — a single zone failure brings down the entire application. Requires formal risk acceptance before any production consideration.
+Remove NVAs / Inline Firewalls — Moderate risk. Reduces bottlenecks and appliance costs, but removes centralized security inspection. Only safe to proceed once cloud-native security controls are fully validated and compliance requirements are confirmed.
+Overall: The first change is low-risk and can move forward quickly. The remaining three require varying degrees of planning and stakeholder alignment before production deployment.
