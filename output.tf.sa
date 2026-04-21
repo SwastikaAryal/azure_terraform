@@ -1,0 +1,87 @@
+# =================================================================================================
+# File: terraform/modules/v2/storage_account/outputs.tf
+# =================================================================================================
+
+# ============================= Storage Account ============================= #
+output "id" {
+  description = "The ID of the storage account"
+  value       = module.bmw_storage_account.id
+}
+
+output "name" {
+  description = "The name of the storage account"
+  value       = module.bmw_storage_account.name
+}
+
+output "primary_access_key" {
+  description = "The primary access key for the storage account"
+  value       = module.bmw_storage_account.primary_access_key
+  sensitive   = true
+}
+
+output "primary_connection_string" {
+  description = "The connection string associated with the primary location"
+  value       = module.bmw_storage_account.primary_connection_string
+  sensitive   = true
+}
+
+# ============================= Identity ============================= #
+output "storage_identity" {
+  description = "The principal_id and tenant_id of the storage account system-assigned identity"
+  value       = module.bmw_storage_account.storage_identity
+}
+
+output "storage_uami_id" {
+  description = "The ID of the user-assigned managed identity"
+  value       = module.bmw_storage_account.storage_uami_id
+}
+
+output "storage_uami_client_id" {
+  description = "The client ID of the user-assigned managed identity"
+  value       = module.bmw_storage_account.storage_uami_client_id
+}
+
+output "storage_uami_principal_id" {
+  description = "The principal ID of the user-assigned managed identity"
+  value       = module.bmw_storage_account.storage_uami_principal_id
+}
+
+# ============================= Private Endpoints ============================= #
+output "private_endpoints" {
+  description = "Map of private endpoint subresources to their name, ID, and private IP address"
+  value       = module.bmw_storage_account.private_endpoints
+}
+
+# ============================= Key Vault (CMK) ============================= #
+output "vault_id" {
+  description = "The ID of the CMEK Key Vault (null if CMK is disabled)"
+  value       = module.bmw_storage_account.vault_id
+}
+
+output "vault_name" {
+  description = "The name of the CMEK Key Vault (null if CMK is disabled)"
+  value       = module.bmw_storage_account.vault_name
+}
+
+# ============================= Lifecycle Management ============================= #
+output "storage_management_policy_id" {
+  description = "The ID of the storage management policy (null if no rules defined)"
+  value       = length(azurerm_storage_management_policy.this) > 0 ? azurerm_storage_management_policy.this[0].id : null
+}
+
+# ============================= Monitoring ============================= #
+output "action_group_id" {
+  description = "The ID of the monitor action group (null if monitoring is disabled)"
+  value       = length(azurerm_monitor_action_group.this) > 0 ? azurerm_monitor_action_group.this[0].id : null
+}
+
+output "metric_alert_id" {
+  description = "The ID of the monitor metric alert (null if monitoring is disabled)"
+  value       = length(azurerm_monitor_metric_alert.this) > 0 ? azurerm_monitor_metric_alert.this[0].id : null
+}
+
+# ============================= Defender for Storage ============================= #
+output "defender_for_storage_id" {
+  description = "The ID of the Defender for Storage pricing resource (null if disabled)"
+  value       = length(azurerm_security_center_subscription_pricing.main) > 0 ? azurerm_security_center_subscription_pricing.main[0].id : null
+}
