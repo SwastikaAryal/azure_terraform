@@ -1,0 +1,310 @@
+name: 'Terraform CI/CD Pipeline'
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['README.md']
+  pull_request:
+    branches: ['**']
+    paths-ignore: ['README.md']
+  workflow_dispatch:
+    inputs:
+      env_name:
+        description: 'Target environment'
+        required: true
+        default: 'UAT'
+        type: choice
+        options:
+          - UAT
+          - POCDEV # TODO to DEV
+          # - PROD
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'import'
+        type: choice
+        options: ['import', 'modify', 'destroy', 'unlock']
+      resource_address:
+        description: 'Terraform Resource Address'
+        required: false
+      resource_id:
+        description: 'Resource ID to import (only for import)'
+        required: false
+      lock_id:
+        description: 'Terraform state lock ID (only for unlock)'
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: 1.11.4
+  TF_DIR: ./terraform/
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # PR Gate: branch name + single-folder scope validation
+  # Only runs on pull_request events. Push and workflow_dispatch skip it.
+  # ─────────────────────────────────────────────────────────────────
+  pr-validation:
+    name: "PR Validation - Branch & Scope"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name pattern
+        id: parse
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "::notice::PR branch: $BRANCH"
+
+          # ── Pattern: feature/<env_folder>-<ticket>-<topic> ──
+          #   <env_folder> : one of the known env folder names
+          #   <ticket>     : alphanumeric ticket ID  (e.g. JIRA-1234)
+          #   <topic>      : kebab-case description  (e.g. add-vnet)
+          #
+          # Valid:   feature/uat-JIRA1234-add-vnet-peering
+          # Invalid: fix/uat-JIRA1234-add-vnet  (wrong prefix)
+
+          VALID_ENVS="arp|bld|ccg|cfg|dcg|din|dsb|fix|jsb|mdv|mi2|mig|mrc|mt1|mt2|svm|tst|uat|ut2|ut3|ut4"
+          PATTERN="^feature/(${VALID_ENVS})-[A-Za-z0-9]+-[A-Za-z0-9][A-Za-z0-9-]*$"
+
+          if [[ ! "$BRANCH" =~ $PATTERN ]]; then
+            echo "::error::Branch name '$BRANCH' does not match the required pattern."
+            echo ""
+            echo "============================================================"
+            echo "  BRANCH NAME VALIDATION FAILED"
+            echo "============================================================"
+            echo ""
+            echo "  Your branch:   $BRANCH"
+            echo "  Required:      feature/<env_folder>-<ticket>-<topic>"
+            echo ""
+            echo "  <env_folder> must be one of:"
+            echo "    arp bld ccg cfg dcg din dsb fix jsb mdv"
+            echo "    mi2 mig mrc mt1 mt2 svm tst uat ut2 ut3 ut4"
+            echo ""
+            echo "  Examples:"
+            echo "    feature/uat-JIRA1234-add-vnet-peering"
+            echo "    feature/bld-T42-fix-nsg-rules"
+            echo ""
+            echo "============================================================"
+            exit 1
+          fi
+
+          BRANCH_ENV=$(echo "$BRANCH" | sed -E "s|^feature/([a-z0-9]+)-.*|\1|")
+          echo "branch_env=$BRANCH_ENV" >> "$GITHUB_OUTPUT"
+          echo "::notice::Branch targets environment folder: $BRANCH_ENV"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate single env folder scope
+        run: |
+          BRANCH_ENV="${{ steps.parse.outputs.branch_env }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "::group::All changed files"
+          echo "$CHANGED_FILES"
+          echo "::endgroup::"
+
+          # Find distinct env folders that were modified under terraform/env/
+          CHANGED_ENV_FOLDERS=$(echo "$CHANGED_FILES" \
+            | grep -oP '^terraform/env/\K[^/]+' \
+            | sort -u || true)
+
+          FOLDER_COUNT=$(echo "$CHANGED_ENV_FOLDERS" | grep -c . || true)
+
+          echo "::group::Environment folders with changes"
+          echo "$CHANGED_ENV_FOLDERS"
+          echo "Distinct env folders changed: $FOLDER_COUNT"
+          echo "::endgroup::"
+
+          # ── Check 1: More than one env folder changed? ──
+          if [[ "$FOLDER_COUNT" -gt 1 ]]; then
+            echo "::error::PR modifies $FOLDER_COUNT env folders. Only 1 is allowed."
+            echo ""
+            echo "============================================================"
+            echo "  SINGLE-FOLDER SCOPE VALIDATION FAILED"
+            echo "============================================================"
+            echo ""
+            echo "  This PR changes files in these env folders:"
+            echo "$CHANGED_ENV_FOLDERS" | sed 's/^/    - /'
+            echo ""
+            echo "  Each PR must only touch ONE env folder under"
+            echo "  terraform/env/ to keep state files isolated."
+            echo ""
+            echo "  Please split into separate PRs, one per env."
+            echo "============================================================"
+            exit 1
+          fi
+
+          # ── Check 2: Does the changed folder match the branch name? ──
+          if [[ "$FOLDER_COUNT" -eq 1 && "$CHANGED_ENV_FOLDERS" != "$BRANCH_ENV" ]]; then
+            echo "::error::Branch targets '$BRANCH_ENV' but changes are in '$CHANGED_ENV_FOLDERS'."
+            echo ""
+            echo "============================================================"
+            echo "  BRANCH / FOLDER MISMATCH"
+            echo "============================================================"
+            echo ""
+            echo "  Branch env folder:   $BRANCH_ENV"
+            echo "  Changed env folder:  $CHANGED_ENV_FOLDERS"
+            echo ""
+            echo "  Rename your branch to:"
+            echo "    feature/${CHANGED_ENV_FOLDERS}-<ticket>-<topic>"
+            echo "============================================================"
+            exit 1
+          fi
+
+          # ── All passed ──
+          if [[ "$FOLDER_COUNT" -eq 0 ]]; then
+            echo "::notice::No env folder changes (modules/shared only). Allowed."
+          else
+            echo "::notice::PR correctly scoped to env folder: $BRANCH_ENV"
+          fi
+          echo ""
+          echo "  ALL VALIDATION CHECKS PASSED"
+
+  terraform-plan:
+    name: 'Terraform - Plan'
+    needs: [pr-validation]
+    if: always() && (needs.pr-validation.result == 'success' || needs.pr-validation.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: Auto-Approve
+    strategy:
+      matrix:
+        env_name: [UAT, POCDEV ]
+      fail-fast: true
+      max-parallel: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets[format('AZURE_CREDENTIALS_{0}', matrix.env_name)] }}
+
+      - name: Show Azure Account Info
+        run: az account show
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          ENV_LOWER=$(echo "${{ matrix.env_name }}" | tr '[:upper:]' '[:lower:]')
+          terraform init -input=false -backend-config=backend-${ENV_LOWER}.conf
+
+      - name: Debug - List contents of terraform/UAT
+        run: ls -l ${{ env.TF_DIR }}UAT
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -var-file=${{ matrix.env_name }}/${{ matrix.env_name }}.tfvars
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Import
+        if: ${{ github.event.inputs.action == 'import' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform import ${{ github.event.inputs.resource_address }} "${{ github.event.inputs.resource_id }}"
+
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform destroy -auto-approve -var-file=${{ matrix.env_name }}/${{ matrix.env_name }}.tfvars
+
+      - name: Terraform Modify
+        if: ${{ github.event.inputs.action == 'modify' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -var-file=${{ matrix.env_name }}/${{ matrix.env_name }}.tfvars
+
+      - name: Terraform Unlock
+        if: ${{ github.event.inputs.action == 'unlock' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform force-unlock ${{ github.event.inputs.lock_id }}
+
+      - name: Terraform Show (Post-Import/Destroy/Modify/Unlock)
+        if: ${{ github.event.inputs.action == 'import' || github.event.inputs.action == 'destroy' || github.event.inputs.action == 'modify' || github.event.inputs.action == 'unlock' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  terraform-apply:
+    name: Terraform - Apply (${{ matrix.env_name }})
+    needs: terraform-plan
+    if: needs.terraform-plan.result == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - env_name: UAT
+            environment: UAT
+          - env_name: POCDEV
+            environment: POCDEV
+      fail-fast: true
+      max-parallel: 1
+    environment: ${{ matrix.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets[format('AZURE_CREDENTIALS_{0}', matrix.env_name)] }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          ENV_LOWER=$(echo "${{ matrix.env_name }}" | tr '[:upper:]' '[:lower:]')
+          terraform init -input=false -backend-config=backend-${ENV_LOWER}.conf
+
+      - name: Terraform Plan (re-run)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -var-file=${{ matrix.env_name }}/${{ matrix.env_name }}.tfvars
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -var-file=${{ matrix.env_name }}/${{ matrix.env_name }}.tfvars
+
+      - name: Terraform Show (Post-Apply)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
