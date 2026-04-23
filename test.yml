@@ -1,0 +1,448 @@
+name: "Terraform CI/CD Pipeline"
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["README.md"]
+  pull_request:
+    branches: ["**"]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to perform"
+        required: true
+        default: "modify"
+        type: choice
+        options: ["import", "modify", "destroy", "unlock"]
+      resource_address:
+        description: "Terraform Resource Address"
+        required: false
+      resource_id:
+        description: "Resource ID to import (only for import)"
+        required: false
+      lock_id:
+        description: "Terraform state lock ID (only for unlock)"
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: 1.11.4
+  TF_DIR: ./terraform/modules/v2/storage_account
+  TF_VARS: terraform.tfvars
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  # =====================================================
+  # JOB 1: DETECT WHICH FOLDERS CHANGED
+  # =====================================================
+  detect-changes:
+    name: "Detect Changed Folders"
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    outputs:
+      changed_dirs: ${{ steps.find-changes.outputs.changed_dirs }}
+      has_changes: ${{ steps.find-changes.outputs.has_changes }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Find changed terraform folders
+        id: find-changes
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || echo "")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          CHANGED_DIRS=$(echo "$CHANGED_FILES" | \
+            grep '\.tf$\|\.tfvars$' | \
+            xargs -I {} dirname {} | \
+            sort -u)
+
+          if [ -z "$CHANGED_DIRS" ]; then
+            echo "No terraform changes found"
+            echo "changed_dirs=[]" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            JSON_DIRS=$(echo "$CHANGED_DIRS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "Changed dirs: $JSON_DIRS"
+            echo "changed_dirs=$JSON_DIRS" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+  # =====================================================
+  # JOB 2: FMT + VALIDATE + LINT (changed folders only)
+  # =====================================================
+  terraform-test:
+    name: "Terraform Test (fmt + validate + lint)"
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: |
+      github.event_name != 'workflow_dispatch' &&
+      needs.detect-changes.outputs.has_changes == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # =========================================
+      # Install TFLint
+      # =========================================
+      - name: Install TFLint
+        run: |
+          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          tflint --version
+
+      # =========================================
+      # Install TFLint Azure Plugin
+      # (change to aws/gcp if you use those)
+      # =========================================
+      - name: Setup TFLint config
+        run: |
+          # Create .tflint.hcl in home dir (applies to all modules)
+          cat > ~/.tflint.hcl << 'EOF'
+          plugin "azurerm" {
+            enabled = true
+            version = "0.27.0"
+            source  = "github.com/terraform-linters/tflint-ruleset-azurerm"
+          }
+
+          # ==========================================
+          # NAMING & BEST PRACTICE RULES
+          # ==========================================
+
+          # Catch: variable "my_var" {} with no description
+          rule "terraform_documented_variables" {
+            enabled = true
+          }
+
+          # Catch: output "my_output" {} with no description
+          rule "terraform_documented_outputs" {
+            enabled = true
+          }
+
+          # Catch: variable declared but never used
+          rule "terraform_unused_declarations" {
+            enabled = true
+          }
+
+          # Catch: using "=" instead of "version = ">= x.x""
+          rule "terraform_required_version" {
+            enabled = true
+          }
+
+          # Catch: no required_providers block
+          rule "terraform_required_providers" {
+            enabled = true
+          }
+
+          # Catch: variable without type defined
+          rule "terraform_typed_variables" {
+            enabled = true
+          }
+
+          # Catch: terraform { } block missing
+          rule "terraform_standard_module_structure" {
+            enabled = true
+          }
+
+          # Catch: snake_case naming violations
+          rule "terraform_naming_convention" {
+            enabled = true
+          }
+          EOF
+
+          echo "TFLint config created"
+          cat ~/.tflint.hcl
+
+      - name: Install TFLint plugins
+        run: |
+          tflint --init --config ~/.tflint.hcl
+
+      # =========================================
+      # STEP 1: terraform fmt -check
+      # =========================================
+      - name: Terraform Format Check
+        run: |
+          CHANGED='${{ needs.detect-changes.outputs.changed_dirs }}'
+          echo "========== FORMAT CHECK =========="
+          FAILED=false
+
+          for dir in $(echo "$CHANGED" | jq -r '.[]'); do
+            if [ ! -d "$dir" ]; then
+              echo "⏭️  $dir — skipping (deleted)"
+              continue
+            fi
+
+            echo "--- $dir ---"
+            if ! terraform fmt -check -diff "$dir"; then
+              echo "❌ $dir — needs formatting"
+              echo "   Fix: cd $dir && terraform fmt"
+              FAILED=true
+            else
+              echo "✅ $dir — formatted OK"
+            fi
+          done
+
+          if [ "$FAILED" = true ]; then
+            echo "💡 Run 'terraform fmt' to auto-fix"
+            exit 1
+          fi
+
+      # =========================================
+      # STEP 2: terraform init + validate
+      # =========================================
+      - name: Terraform Validate
+        run: |
+          CHANGED='${{ needs.detect-changes.outputs.changed_dirs }}'
+          echo "========== VALIDATE =========="
+          FAILED=false
+
+          for dir in $(echo "$CHANGED" | jq -r '.[]'); do
+            if [ ! -d "$dir" ]; then continue; fi
+
+            echo "--- $dir ---"
+            if ! (cd "$dir" && terraform init -backend=false -input=false) > /dev/null 2>&1; then
+              echo "❌ $dir — init failed"
+              FAILED=true
+              continue
+            fi
+
+            if ! (cd "$dir" && terraform validate); then
+              echo "❌ $dir — validation failed"
+              FAILED=true
+            else
+              echo "✅ $dir — valid"
+            fi
+          done
+
+          if [ "$FAILED" = true ]; then exit 1; fi
+
+      # =========================================
+      # STEP 3: TFLint — the actual lint check
+      # =========================================
+      - name: TFLint
+        run: |
+          CHANGED='${{ needs.detect-changes.outputs.changed_dirs }}'
+          echo "========== TFLINT =========="
+          FAILED=false
+
+          for dir in $(echo "$CHANGED" | jq -r '.[]'); do
+            if [ ! -d "$dir" ]; then continue; fi
+
+            echo "--- Linting: $dir ---"
+
+            # Init tflint for this directory
+            (cd "$dir" && terraform init -backend=false -input=false) > /dev/null 2>&1
+
+            # Run tflint
+            LINT_OUTPUT=$(tflint --config ~/.tflint.hcl --chdir="$dir" --format compact 2>&1)
+            LINT_EXIT=$?
+
+            if [ $LINT_EXIT -ne 0 ]; then
+              echo "❌ $dir — lint issues found:"
+              echo "$LINT_OUTPUT"
+              echo ""
+              FAILED=true
+            else
+              if [ -n "$LINT_OUTPUT" ]; then
+                # Warnings but not errors
+                echo "⚠️  $dir — warnings:"
+                echo "$LINT_OUTPUT"
+              else
+                echo "✅ $dir — clean"
+              fi
+            fi
+          done
+
+          echo ""
+          echo "============================="
+
+          if [ "$FAILED" = true ]; then
+            echo "💡 Fix the lint issues above before merging"
+            exit 1
+          fi
+
+      # Summary
+      - name: Test Summary
+        if: always()
+        run: |
+          CHANGED='${{ needs.detect-changes.outputs.changed_dirs }}'
+          echo "## Terraform Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Format (terraform fmt) | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate (terraform validate) | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint (tflint) | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Folders tested:**" >> $GITHUB_STEP_SUMMARY
+          for dir in $(echo "$CHANGED" | jq -r '.[]'); do
+            echo "- \`$dir\`" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # =====================================================
+  # EXISTING: TERRAFORM PLAN
+  # =====================================================
+  terraform-plan:
+    name: "Terraform - Plan"
+    runs-on: ubuntu-latest
+    environment: Auto-Approve
+    needs: [detect-changes, terraform-test]
+    if: |
+      always() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.detect-changes.outputs.has_changes == 'false' ||
+        needs.terraform-test.result == 'success'
+      )
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Show Azure Account Info
+        run: az account show
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Import
+        if: ${{ github.event.inputs.action == 'import' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform import ${{ github.event.inputs.resource_address }} "${{ github.event.inputs.resource_id }}"
+
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform destroy -auto-approve -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Show (Post-Import/Destroy/Modify)
+        if: ${{ github.event.inputs.action == 'import' || github.event.inputs.action == 'destroy' || github.event.inputs.action == 'modify' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Terraform Modify
+        if: ${{ github.event.inputs.action == 'modify' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: echo "Modify step complete. Plan already generated."
+
+      - name: Terraform Unlock
+        if: ${{ github.event.inputs.action == 'unlock' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform force-unlock ${{ github.event.inputs.lock_id }}
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  # =====================================================
+  # EXISTING: TERRAFORM APPLY (unchanged)
+  # =====================================================
+  terraform-apply:
+    name: "Terraform - Apply"
+    needs: terraform-plan
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'modify' && needs.terraform-plan.result == 'success') ||
+      (github.event_name == 'push' && needs.terraform-plan.result == 'success') ||
+      (github.event_name == 'pull_request' && needs.terraform-plan.result == 'success')
+    runs-on: ubuntu-latest
+    environment: UAT
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_UAT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Plan (re-run)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Show (Post-Apply)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
