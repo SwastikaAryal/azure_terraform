@@ -1,0 +1,43 @@
+# Check: Only ONE resource group in the code
+      - name: Check single resource group
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          RG_COUNT=$(grep -r 'resource "azurerm_resource_group"' *.tf | wc -l)
+          echo "Resource groups found: $RG_COUNT"
+          if [ "$RG_COUNT" -ne 1 ]; then
+            echo "❌ Expected 1 resource group, found $RG_COUNT"
+            grep -rn 'resource "azurerm_resource_group"' *.tf
+            exit 1
+          fi
+          echo "✅ Exactly 1 resource group"
+
+      # Check: Only ONE backend config
+      - name: Check single backend
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          BACKEND_COUNT=$(grep -r 'backend "' *.tf | wc -l)
+          echo "Backends found: $BACKEND_COUNT"
+          if [ "$BACKEND_COUNT" -ne 1 ]; then
+            echo "❌ Expected 1 backend, found $BACKEND_COUNT"
+            grep -rn 'backend "' *.tf
+            exit 1
+          fi
+          echo "✅ Exactly 1 backend"
+
+      # Check: Only ONE state file key in backend
+      - name: Check single state key
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          KEY_COUNT=$(grep -r 'key\s*=' *.tf | grep -v '#' | wc -l)
+          echo "State keys found: $KEY_COUNT"
+          if [ "$KEY_COUNT" -gt 1 ]; then
+            echo "❌ Multiple state keys found"
+            grep -rn 'key\s*=' *.tf
+            exit 1
+          fi
+          echo "✅ Single state key"
+
+      # Run terraform test
+      - name: Terraform Test
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform test
