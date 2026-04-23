@@ -1,0 +1,11 @@
+JIRA TICKET
+Title: Add impact analysis gate to CI/CD pipeline — block high-impact changes
+Type: Task
+Priority: High
+Estimate: 4 hours
+Description:
+Add a safety check in the pipeline that reads the terraform plan output and checks how many resources will be destroyed or recreated. If the number is high, block the pipeline and require manual approval. This prevents accidental deletion of production resources.
+What counts as HIGH impact:
+ActionLow ImpactHigh ImpactResources to createAny number—Resources to update1-56+Resources to destroy0Any destroy = HIGHResources to recreate0Any recreate = HIGH
+What to add in your pipeline YAML (after Terraform Plan, before Apply):
+yaml
