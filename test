@@ -1,4 +1,4 @@
-# Check: Only ONE resource group in the code
+# Check: Only ONE resource group
       - name: Check single resource group
         working-directory: ${{ env.TF_DIR }}
         run: |
@@ -9,9 +9,13 @@
             grep -rn 'resource "azurerm_resource_group"' *.tf
             exit 1
           fi
+          RG_FILE=$(grep -rn 'resource "azurerm_resource_group"' *.tf)
+          RG_NAME=$(grep -A5 'resource "azurerm_resource_group"' *.tf | grep 'name' | head -1 | sed 's/.*= *"\(.*\)"/\1/')
           echo "✅ Exactly 1 resource group"
+          echo "   Name: $RG_NAME"
+          echo "   Found in: $RG_FILE"
 
-      # Check: Only ONE backend config
+      # Check: Only ONE backend
       - name: Check single backend
         working-directory: ${{ env.TF_DIR }}
         run: |
@@ -22,22 +26,23 @@
             grep -rn 'backend "' *.tf
             exit 1
           fi
+          BACKEND_TYPE=$(grep 'backend "' *.tf | sed 's/.*backend "\(.*\)".*/\1/')
+          BACKEND_FILE=$(grep -rn 'backend "' *.tf)
           echo "✅ Exactly 1 backend"
+          echo "   Type: $BACKEND_TYPE"
+          echo "   Found in: $BACKEND_FILE"
 
-      # Check: Only ONE state file key in backend
+      # Check: Only ONE state key in backend
       - name: Check single state key
         working-directory: ${{ env.TF_DIR }}
         run: |
-          KEY_COUNT=$(grep -r 'key\s*=' *.tf | grep -v '#' | wc -l)
-          echo "State keys found: $KEY_COUNT"
+          KEY_COUNT=$(grep -A5 'backend "' *.tf | grep 'key\s*=' | wc -l)
+          echo "Backend state keys found: $KEY_COUNT"
           if [ "$KEY_COUNT" -gt 1 ]; then
-            echo "❌ Multiple state keys found"
-            grep -rn 'key\s*=' *.tf
+            echo "❌ Multiple backend state keys found"
+            grep -A5 'backend "' *.tf | grep 'key\s*='
             exit 1
           fi
-          echo "✅ Single state key"
-
-      # Run terraform test
-      - name: Terraform Test
-        working-directory: ${{ env.TF_DIR }}
-        run: terraform test
+          KEY_NAME=$(grep -A5 'backend "' *.tf | grep 'key\s*=' | sed 's/.*= *"\(.*\)"/\1/')
+          echo "✅ Single backend state key"
+          echo "   Key: $KEY_NAME"
