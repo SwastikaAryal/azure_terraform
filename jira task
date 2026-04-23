@@ -1,0 +1,45 @@
+TICKET 2A
+Title: Setup change detection + fmt/validate in GitHub Actions (changed folders only)
+Type: Task
+Priority: High
+Estimate: 4 hours
+Sprint: Current
+Description:
+Create a GitHub Actions workflow that detects which env/ or modules/ folder was changed in a push or PR, and runs terraform fmt and terraform validate only on those changed folders. Skip everything else.
+Why:
+Currently there is no automated testing. When we add tests, we don't want to test ALL environments on every push — that's slow and wasteful. If someone edits env/dev, only env/dev should be tested.
+What to do:
+
+Create .github/workflows/terraform-tests.yml
+Add detect-changes job that:
+
+Compares current commit vs previous commit (push) or PR base vs head (PR)
+Extracts changed folders under env/ and modules/
+Outputs a JSON list like ["env/dev", "modules/vm"]
+
+
+Add fmt-check job that:
+
+Reads the changed folders list
+Runs terraform fmt -check only on those folders
+Fails if any folder has formatting issues
+
+
+Add validate job that:
+
+Runs terraform init -backend=false + terraform validate only on changed folders
+Fails if any folder has invalid code
+
+
+
+Acceptance Criteria:
+
+ Workflow triggers on push to main/develop and on PRs to main
+ detect-changes job correctly identifies which folders changed
+ fmt-check runs ONLY on changed folders, not all
+ validate runs ONLY on changed folders, not all
+ If no env/ or modules/ files changed → jobs skip (no wasted time)
+ Tested: edit env/dev → only env/dev is checked
+ Tested: edit modules/vm → only modules/vm is checked
+ Tested: edit README.md → no tests run (nothing relevant changed)
+ PR raised and merged to main
