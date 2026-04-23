@@ -1,0 +1,400 @@
+name: "Terraform DR Pipeline - Disaster Recovery"
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: "Resource Group to restore"
+        required: true
+        type: string
+      restore_date:
+        description: "Restore to this date (YYYY-MM-DD)"
+        required: true
+        type: string
+      restore_time:
+        description: "Restore time in 24hr format (HH:MM)"
+        required: false
+        default: "23:59"
+        type: string
+      vault_name:
+        description: "Recovery Services Vault name"
+        required: true
+        type: string
+      vault_rg:
+        description: "Resource Group of the vault"
+        required: true
+        type: string
+      storage_account:
+        description: "Storage Account for terraform state"
+        required: true
+        type: string
+      state_container:
+        description: "Blob container for state file"
+        required: true
+        default: "tfstate"
+        type: string
+      state_key:
+        description: "State file name (e.g. terraform.tfstate)"
+        required: true
+        default: "terraform.tfstate"
+        type: string
+      dry_run:
+        description: "Dry run (true = show only, false = actual restore)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: 1.11.4
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  dr-fetch-state:
+    name: "DR - Fetch State"
+    runs-on: ubuntu-latest
+    outputs:
+      state_found: ${{ steps.fetch.outputs.state_found }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Show Azure Account Info
+        run: az account show
+
+      - name: Fetch state file by date
+        id: fetch
+        run: |
+          RESTORE_DATETIME="${{ inputs.restore_date }}T${{ inputs.restore_time }}:00Z"
+
+          echo "Resource Group : ${{ inputs.resource_group }}"
+          echo "Restore To     : $RESTORE_DATETIME"
+          echo "Storage Account: ${{ inputs.storage_account }}"
+          echo "Container      : ${{ inputs.state_container }}"
+          echo "State Key      : ${{ inputs.state_key }}"
+
+          SNAPSHOTS=$(az storage blob list \
+            --account-name "${{ inputs.storage_account }}" \
+            --container-name "${{ inputs.state_container }}" \
+            --prefix "${{ inputs.state_key }}" \
+            --include s \
+            --auth-mode login \
+            --output json)
+
+          SNAPSHOT_DATE=$(echo "$SNAPSHOTS" | jq -r "
+            [.[] | select(.snapshot != null) | select(.snapshot <= \"$RESTORE_DATETIME\")]
+            | sort_by(.snapshot)
+            | last
+            | .snapshot // empty
+          ")
+
+          if [ -z "$SNAPSHOT_DATE" ]; then
+            echo "❌ No state snapshot found before $RESTORE_DATETIME"
+            echo "state_found=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "✅ Found snapshot: $SNAPSHOT_DATE"
+
+          az storage blob download \
+            --account-name "${{ inputs.storage_account }}" \
+            --container-name "${{ inputs.state_container }}" \
+            --name "${{ inputs.state_key }}" \
+            --snapshot "$SNAPSHOT_DATE" \
+            --file ./restored-state.tfstate \
+            --auth-mode login
+
+          echo "✅ State file downloaded"
+          echo "state_found=true" >> $GITHUB_OUTPUT
+
+      - name: Show resources in old state
+        if: steps.fetch.outputs.state_found == 'true'
+        run: |
+          echo "--- VMs ---"
+          jq -r '.resources[] | select(.type == "azurerm_virtual_machine" or .type == "azurerm_linux_virtual_machine" or .type == "azurerm_windows_virtual_machine") | .instances[].attributes.name' restored-state.tfstate || echo "None"
+
+          echo "--- Disks ---"
+          jq -r '.resources[] | select(.type == "azurerm_managed_disk") | .instances[].attributes.name' restored-state.tfstate || echo "None"
+
+          echo "--- NICs ---"
+          jq -r '.resources[] | select(.type == "azurerm_network_interface") | .instances[].attributes.name' restored-state.tfstate || echo "None"
+
+      - name: Upload state artifact
+        if: steps.fetch.outputs.state_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state
+          path: ./restored-state.tfstate
+          retention-days: 1
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  dr-restore-disks:
+    name: "DR - Restore Disks"
+    needs: dr-fetch-state
+    if: needs.dr-fetch-state.outputs.state_found == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download state file
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Restore disks from Recovery Vault
+        run: |
+          echo "Vault    : ${{ inputs.vault_name }}"
+          echo "Vault RG : ${{ inputs.vault_rg }}"
+          echo "Target RG: ${{ inputs.resource_group }}"
+          echo "Dry Run  : ${{ inputs.dry_run }}"
+
+          DISKS=$(jq -r '.resources[] | select(.type == "azurerm_managed_disk") | .instances[].attributes.name' restored-state.tfstate)
+
+          if [ -z "$DISKS" ]; then
+            echo "No managed disks found in state. Skipping."
+            exit 0
+          fi
+
+          FAILED=false
+
+          for DISK_NAME in $DISKS; do
+            echo "--- $DISK_NAME ---"
+
+            if [ "${{ inputs.dry_run }}" == "true" ]; then
+              echo "[DRY RUN] Would restore $DISK_NAME"
+              continue
+            fi
+
+            CONTAINER_NAME=$(az backup container list \
+              --vault-name "${{ inputs.vault_name }}" \
+              --resource-group "${{ inputs.vault_rg }}" \
+              --backup-management-type AzureIaasVM \
+              --query "[0].name" -o tsv)
+
+            if [ -z "$CONTAINER_NAME" ]; then
+              echo "❌ No backup container found"
+              FAILED=true
+              continue
+            fi
+
+            ITEM_NAME=$(az backup item list \
+              --vault-name "${{ inputs.vault_name }}" \
+              --resource-group "${{ inputs.vault_rg }}" \
+              --workload-type VM \
+              --query "[0].name" -o tsv)
+
+            if [ -z "$ITEM_NAME" ]; then
+              echo "❌ No backup item found"
+              FAILED=true
+              continue
+            fi
+
+            RP_NAME=$(az backup recoverypoint list \
+              --vault-name "${{ inputs.vault_name }}" \
+              --resource-group "${{ inputs.vault_rg }}" \
+              --container-name "$CONTAINER_NAME" \
+              --item-name "$ITEM_NAME" \
+              --start-date "${{ inputs.restore_date }}" \
+              --end-date "${{ inputs.restore_date }}" \
+              --query "[0].name" -o tsv)
+
+            if [ -z "$RP_NAME" ]; then
+              echo "⚠️  No recovery point on ${{ inputs.restore_date }}, using latest"
+              RP_NAME=$(az backup recoverypoint list \
+                --vault-name "${{ inputs.vault_name }}" \
+                --resource-group "${{ inputs.vault_rg }}" \
+                --container-name "$CONTAINER_NAME" \
+                --item-name "$ITEM_NAME" \
+                --query "[0].name" -o tsv)
+            fi
+
+            if [ -z "$RP_NAME" ]; then
+              echo "❌ No recovery points available"
+              FAILED=true
+              continue
+            fi
+
+            echo "Recovery point: $RP_NAME"
+
+            az backup restore restore-disks \
+              --vault-name "${{ inputs.vault_name }}" \
+              --resource-group "${{ inputs.vault_rg }}" \
+              --container-name "$CONTAINER_NAME" \
+              --item-name "$ITEM_NAME" \
+              --rp-name "$RP_NAME" \
+              --target-resource-group "${{ inputs.resource_group }}" \
+              --storage-account "${{ inputs.storage_account }}"
+
+            if [ $? -eq 0 ]; then
+              echo "✅ Restore triggered for $DISK_NAME"
+            else
+              echo "❌ Restore failed for $DISK_NAME"
+              FAILED=true
+            fi
+          done
+
+          if [ "$FAILED" = true ]; then exit 1; fi
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  dr-create-vms:
+    name: "DR - Create VMs"
+    needs: [dr-fetch-state, dr-restore-disks]
+    if: needs.dr-fetch-state.outputs.state_found == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Download state file
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Show Azure Account Info
+        run: az account show
+
+      - name: Terraform Init
+        run: |
+          cp restored-state.tfstate terraform.tfstate
+          terraform init -input=false
+
+      - name: Terraform Plan (from old state)
+        run: terraform plan -input=false
+
+      - name: Terraform Apply
+        if: ${{ inputs.dry_run == false }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Terraform Show
+        if: ${{ inputs.dry_run == false }}
+        run: terraform show
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  dr-validate:
+    name: "DR - Validate"
+    needs: [dr-fetch-state, dr-restore-disks, dr-create-vms]
+    if: ${{ inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download state file
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Validate restored resources
+        run: |
+          RG="${{ inputs.resource_group }}"
+          PASS=true
+
+          echo "--- VMs ---"
+          EXPECTED_VMS=$(jq -r '.resources[] | select(.type == "azurerm_virtual_machine" or .type == "azurerm_linux_virtual_machine" or .type == "azurerm_windows_virtual_machine") | .instances[].attributes.name' restored-state.tfstate)
+          ACTUAL_VMS=$(az vm list -g "$RG" --query "[].name" -o tsv 2>/dev/null)
+
+          for vm in $EXPECTED_VMS; do
+            if echo "$ACTUAL_VMS" | grep -q "^${vm}$"; then
+              echo "  ✅ $vm"
+            else
+              echo "  ❌ $vm — MISSING"
+              PASS=false
+            fi
+          done
+
+          echo "--- Disks ---"
+          EXPECTED_DISKS=$(jq -r '.resources[] | select(.type == "azurerm_managed_disk") | .instances[].attributes.name' restored-state.tfstate)
+          ACTUAL_DISKS=$(az disk list -g "$RG" --query "[].name" -o tsv 2>/dev/null)
+
+          for disk in $EXPECTED_DISKS; do
+            if echo "$ACTUAL_DISKS" | grep -q "^${disk}$"; then
+              echo "  ✅ $disk"
+            else
+              echo "  ❌ $disk — MISSING"
+              PASS=false
+            fi
+          done
+
+          echo "--- NICs ---"
+          EXPECTED_NICS=$(jq -r '.resources[] | select(.type == "azurerm_network_interface") | .instances[].attributes.name' restored-state.tfstate)
+          ACTUAL_NICS=$(az network nic list -g "$RG" --query "[].name" -o tsv 2>/dev/null)
+
+          for nic in $EXPECTED_NICS; do
+            if echo "$ACTUAL_NICS" | grep -q "^${nic}$"; then
+              echo "  ✅ $nic"
+            else
+              echo "  ❌ $nic — MISSING"
+              PASS=false
+            fi
+          done
+
+          if [ "$PASS" = true ]; then
+            echo "🎉 DR RESTORE SUCCESSFUL"
+          else
+            echo "⚠️ DR RESTORE INCOMPLETE"
+            exit 1
+          fi
+
+      - name: DR Report
+        if: always()
+        run: |
+          echo "## DR Restore Report" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Group | \`${{ inputs.resource_group }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Restore Date | ${{ inputs.restore_date }} ${{ inputs.restore_time }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vault | \`${{ inputs.vault_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run | ${{ inputs.dry_run }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
