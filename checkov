@@ -1,0 +1,95 @@
+name: "Checkov Security Scan"
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_DIR: ./terraform
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checkov:
+    name: "Checkov — Terraform Security Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Checkov
+        run: pip install checkov --quiet
+
+      - name: Run Checkov
+        id: checkov
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          checkov \
+            --directory . \
+            --framework terraform \
+            --soft-fail \
+            --compact \
+            --quiet \
+            2>&1 | tee /tmp/checkov_output.txt
+
+          PASSED=$(grep -oP 'Passed checks: \K\d+' /tmp/checkov_output.txt || echo "0")
+          FAILED=$(grep -oP 'Failed checks: \K\d+' /tmp/checkov_output.txt || echo "0")
+          SKIPPED=$(grep -oP 'Skipped checks: \K\d+' /tmp/checkov_output.txt || echo "0")
+
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+
+      - name: Post results to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const passed = '${{ steps.checkov.outputs.passed }}';
+            const failed = '${{ steps.checkov.outputs.failed }}';
+            const skipped = '${{ steps.checkov.outputs.skipped }}';
+
+            const icon = parseInt(failed) > 0 ? '🟡' : '✅';
+            const header = parseInt(failed) > 0
+              ? `${icon} Checkov — ${failed} findings`
+              : `${icon} Checkov — All checks passed`;
+
+            let body = `## ${header}\n\n`;
+            body += `| Passed | Failed | Skipped |\n`;
+            body += `|--------|--------|---------|\n`;
+            body += `| ${passed} | ${failed} | ${skipped} |\n\n`;
+            body += `[View full scan →](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\n`;
+            body += `---\n*Checkov security scan — auto-generated*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes('Checkov security scan'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
