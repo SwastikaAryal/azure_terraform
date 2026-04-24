@@ -1,0 +1,68 @@
+# ════════════════════════════════════════════════════════════════
+# SAFE DEPLOY — Replace your current apply steps with these
+#
+# In your uat.yml terraform-apply job, replace:
+#
+#   - name: Terraform Apply
+#     run: terraform apply -auto-approve -var-file=${{ env.TF_VARS }}
+#
+# With the steps below.
+# ════════════════════════════════════════════════════════════════
+
+      # Step 1: Re-run plan and save as JSON (needed for safe-deploy)
+      - name: Terraform Plan (save for safe deploy)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan \
+            -input=false \
+            -var-file=${{ env.TF_VARS }} \
+            -out=tfplan-apply.bin
+          terraform show -json tfplan-apply.bin > tfplan-apply.json
+
+      # Step 2: Run safe deploy instead of raw apply
+      - name: Safe Deploy — apply with impact isolation
+        id: safe_deploy
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          chmod +x ${{ github.workspace }}/scripts/safe-deploy.sh
+
+          ${{ github.workspace }}/scripts/safe-deploy.sh \
+            tfplan-apply.json \
+            ${{ env.TF_VARS }}
+
+          EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -eq 2 ]; then
+            echo "safe_deploy_result=all_high" >> "$GITHUB_OUTPUT"
+            echo "::warning::All changes are HIGH impact — nothing was applied"
+          elif [ "$EXIT_CODE" -eq 0 ]; then
+            echo "safe_deploy_result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "safe_deploy_result=error" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      # Step 3: Upload isolation report as artifact (if any resources were isolated)
+      - name: Upload isolation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolation-report
+          path: ${{ env.TF_DIR }}/isolation-report.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Step 4: Post isolation summary to workflow
+      - name: Show isolation summary
+        if: always()
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          if [ -f isolation-report.json ]; then
+            echo ""
+            echo "::warning::Some resources were isolated and NOT applied"
+            echo ""
+            jq -r '.isolated_resources[] | "  ⛔ \(.actions | join(",") | ascii_upcase)  \(.address)"' isolation-report.json
+            echo ""
+            echo "Download the isolation-report artifact for full details"
+            echo "and manual apply commands."
+          fi
