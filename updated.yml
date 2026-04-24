@@ -1,0 +1,547 @@
+name: "Terraform CI/CD Pipeline"
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["README.md"]
+  pull_request:
+    branches: ["**"]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to perform"
+        required: true
+        default: "modify"
+        type: choice
+        options: ["import", "modify", "destroy", "unlock"]
+      resource_address:
+        description: "Terraform Resource Address"
+        required: false
+      resource_id:
+        description: "Resource ID to import (only for import)"
+        required: false
+      lock_id:
+        description: "Terraform state lock ID (only for unlock)"
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write  # NEW: needed for posting impact summary as PR comment
+
+env:
+  TF_VERSION: 1.11.4
+  TF_DIR: ./terraform
+  TF_VARS: terraform.tfvars
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  pr-validation:
+    name: "PR Validation - Branch & Scope"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name pattern
+        id: parse
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          echo "::notice::PR branch: $BRANCH"
+
+          VALID_ENVS="arp|bld|ccg|cfg|dcg|din|dsb|fix|jsb|mdv|mi2|mig|mrc|mt1|mt2|svm|tst|uat|ut2|ut3|ut4"
+          PATTERN="^feature/(${VALID_ENVS})-[A-Za-z0-9]+-[A-Za-z0-9][A-Za-z0-9-]*$"
+
+          if [[ ! "$BRANCH" =~ $PATTERN ]]; then
+            echo "::error::Branch name '$BRANCH' does not match the required pattern."
+            echo ""
+            echo "============================================================"
+            echo "  BRANCH NAME VALIDATION FAILED"
+            echo "============================================================"
+            echo ""
+            echo "  Your branch:   $BRANCH"
+            echo "  Required:      feature/<env_folder>-<ticket>-<topic>"
+            echo ""
+            echo "  <env_folder> must be one of:"
+            echo "    arp bld ccg cfg dcg din dsb fix jsb mdv"
+            echo "    mi2 mig mrc mt1 mt2 svm tst uat ut2 ut3 ut4"
+            echo ""
+            echo "  Examples:"
+            echo "    feature/uat-JIRA1234-add-vnet-peering"
+            echo "    feature/bld-T42-fix-nsg-rules"
+            echo ""
+            echo "============================================================"
+            exit 1
+          fi
+
+          BRANCH_ENV=$(echo "$BRANCH" | sed -E "s|^feature/([a-z0-9]+)-.*|\1|")
+          echo "branch_env=$BRANCH_ENV" >> "$GITHUB_OUTPUT"
+          echo "::notice::Branch targets environment folder: $BRANCH_ENV"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate single env folder scope
+        run: |
+          BRANCH_ENV="${{ steps.parse.outputs.branch_env }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "::group::All changed files"
+          echo "$CHANGED_FILES"
+          echo "::endgroup::"
+
+          CHANGED_ENV_FOLDERS=$(echo "$CHANGED_FILES" \
+            | grep -oP '^terraform/env/\K[^/]+' \
+            | sort -u || true)
+
+          FOLDER_COUNT=$(echo "$CHANGED_ENV_FOLDERS" | grep -c . || true)
+
+          echo "::group::Environment folders with changes"
+          echo "$CHANGED_ENV_FOLDERS"
+          echo "Distinct env folders changed: $FOLDER_COUNT"
+          echo "::endgroup::"
+
+          if [[ "$FOLDER_COUNT" -gt 1 ]]; then
+            echo "::error::PR modifies $FOLDER_COUNT env folders. Only 1 is allowed."
+            echo ""
+            echo "============================================================"
+            echo "  SINGLE-FOLDER SCOPE VALIDATION FAILED"
+            echo "============================================================"
+            echo ""
+            echo "  This PR changes files in these env folders:"
+            echo "$CHANGED_ENV_FOLDERS" | sed 's/^/    - /'
+            echo ""
+            echo "  Each PR must only touch ONE env folder under"
+            echo "  terraform/env/ to keep state files isolated."
+            echo ""
+            echo "  Please split into separate PRs, one per env."
+            echo "============================================================"
+            exit 1
+          fi
+
+          if [[ "$FOLDER_COUNT" -eq 1 && "$CHANGED_ENV_FOLDERS" != "$BRANCH_ENV" ]]; then
+            echo "::error::Branch targets '$BRANCH_ENV' but changes are in '$CHANGED_ENV_FOLDERS'."
+            echo ""
+            echo "============================================================"
+            echo "  BRANCH / FOLDER MISMATCH"
+            echo "============================================================"
+            echo ""
+            echo "  Branch env folder:   $BRANCH_ENV"
+            echo "  Changed env folder:  $CHANGED_ENV_FOLDERS"
+            echo ""
+            echo "  Rename your branch to:"
+            echo "    feature/${CHANGED_ENV_FOLDERS}-<ticket>-<topic>"
+            echo "============================================================"
+            exit 1
+          fi
+
+          if [[ "$FOLDER_COUNT" -eq 0 ]]; then
+            echo "::notice::No env folder changes (modules/shared only). Allowed."
+          else
+            echo "::notice::PR correctly scoped to env folder: $BRANCH_ENV"
+          fi
+          echo ""
+          echo "  ALL VALIDATION CHECKS PASSED"
+
+  terraform-plan:
+    name: "Terraform - Plan"
+    needs: pr-validation
+    if: always() && (needs.pr-validation.result == 'success' || needs.pr-validation.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: Auto-Approve
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_SANDBOX }}
+
+      - name: Show Azure Account Info
+        run: az account show
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Format
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Check single resource group
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          RG_COUNT=$(grep -r 'resource "azurerm_resource_group"' *.tf | wc -l)
+          echo "Resource groups found: $RG_COUNT"
+          if [ "$RG_COUNT" -ne 1 ]; then
+            echo "Expected 1 resource group, found $RG_COUNT"
+            grep -rn 'resource "azurerm_resource_group"' *.tf
+            exit 1
+          fi
+          echo "Exactly 1 resource group"
+
+      - name: Check single backend
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          BACKEND_COUNT=$(grep -r 'backend "' *.tf | wc -l)
+          echo "Backends found: $BACKEND_COUNT"
+          if [ "$BACKEND_COUNT" -ne 1 ]; then
+            echo "Expected 1 backend, found $BACKEND_COUNT"
+            grep -rn 'backend "' *.tf
+            exit 1
+          fi
+          BACKEND_TYPE=$(grep 'backend "' *.tf | sed 's/.*backend "\(.*\)".*/\1/')
+          BACKEND_FILE=$(grep -rn 'backend "' *.tf)
+          echo "Exactly 1 backend"
+          echo "  Type: $BACKEND_TYPE"
+          echo "  Found in: $BACKEND_FILE"
+
+      - name: Check single state key
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          KEY_COUNT=$(grep -A5 'backend "' *.tf | grep 'key\s*=' | wc -l)
+          echo "Backend state keys found: $KEY_COUNT"
+          if [ "$KEY_COUNT" -gt 1 ]; then
+            echo "Multiple backend state keys found"
+            grep -A5 'backend "' *.tf | grep 'key\s*='
+            exit 1
+          fi
+          KEY_NAME=$(grep -A5 'backend "' *.tf | grep 'key\s*=' | sed 's/.*= *"\(.*\)"/\1/')
+          echo "Single backend state key"
+          echo "  Key: $KEY_NAME"
+
+      # ────────────────────────────────────────────────────────────
+      # CHANGED: Plan now saves output as JSON for impact analysis
+      # ────────────────────────────────────────────────────────────
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan -input=false -var-file=${{ env.TF_VARS }} -out=tfplan.bin
+          terraform show -json tfplan.bin > tfplan.json
+
+      # ────────────────────────────────────────────────────────────
+      # NEW: Analyze plan and classify every change
+      # ────────────────────────────────────────────────────────────
+      - name: Analyze plan impact
+        if: always() && hashFiles(format('{0}/tfplan.json', env.TF_DIR)) != ''
+        id: impact
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          # ── Critical resources: delete/replace = HIGH ──
+          HIGH_TYPES='[
+            "azurerm_virtual_machine",
+            "azurerm_windows_virtual_machine",
+            "azurerm_linux_virtual_machine",
+            "azurerm_virtual_machine_scale_set",
+            "azurerm_windows_virtual_machine_scale_set",
+            "azurerm_managed_disk",
+            "azurerm_virtual_machine_data_disk_attachment",
+            "azurerm_mssql_managed_instance",
+            "azurerm_mssql_database",
+            "azurerm_mssql_managed_database",
+            "azurerm_key_vault",
+            "azurerm_key_vault_key",
+            "azurerm_key_vault_secret",
+            "azurerm_subnet",
+            "azurerm_virtual_network",
+            "azurerm_network_security_group",
+            "azurerm_lb",
+            "azurerm_lb_rule",
+            "azurerm_private_endpoint",
+            "azurerm_resource_group",
+            "azurerm_recovery_services_vault",
+            "azurerm_backup_policy_vm",
+            "azurerm_user_assigned_identity"
+          ]'
+
+          # ── Medium resources: RBAC, storage, extensions ──
+          MED_TYPES='[
+            "azurerm_role_assignment",
+            "azurerm_network_security_rule",
+            "azurerm_storage_account",
+            "azurerm_storage_container",
+            "azurerm_automation_account",
+            "azurerm_automation_connection_type",
+            "azurerm_virtual_machine_extension",
+            "azurerm_monitor_diagnostic_setting"
+          ]'
+
+          # ── Pull all non-noop changes from plan ──
+          ALL_CHANGES=$(jq '[.resource_changes[]? | select(.change.actions != ["no-op"] and .change.actions != ["read"])]' tfplan.json)
+
+          # ── HIGH: delete or replace on critical resources ──
+          HIGH_CHANGES=$(echo "$ALL_CHANGES" | jq --argjson types "$HIGH_TYPES" '
+            [.[] |
+              select(
+                (.change.actions | any(. == "delete")) or
+                (.change.actions == ["delete","create"])
+              ) |
+              select(.type as $t | $types | any(. as $p | $t | startswith($p)))
+            ]')
+
+          # ── MEDIUM: update on critical, or any change on medium resources ──
+          MED_CHANGES=$(echo "$ALL_CHANGES" | jq --argjson ht "$HIGH_TYPES" --argjson mt "$MED_TYPES" '
+            [.[] |
+              select(
+                ((.change.actions | any(. == "update")) and (.type as $t | $ht | any(. as $p | $t | startswith($p))))
+                or
+                ((.type as $t | $mt | any(. as $p | $t | startswith($p))) and (.change.actions != ["create"]))
+              )
+            ]')
+
+          # ── LOW: everything else ──
+          HIGH_ADDRS=$(echo "$HIGH_CHANGES" | jq -r '.[].address')
+          MED_ADDRS=$(echo "$MED_CHANGES" | jq -r '.[].address')
+          LOW_CHANGES=$(echo "$ALL_CHANGES" | jq --argjson ht "$HIGH_TYPES" --argjson mt "$MED_TYPES" '
+            [.[] |
+              select(
+                (
+                  (.change.actions | any(. == "delete")) or
+                  (.change.actions == ["delete","create"])
+                ) and
+                (.type as $t | $ht | any(. as $p | $t | startswith($p)))
+                | not
+              ) |
+              select(
+                (
+                  ((.change.actions | any(. == "update")) and (.type as $t | $ht | any(. as $p | $t | startswith($p))))
+                  or
+                  ((.type as $t | $mt | any(. as $p | $t | startswith($p))) and (.change.actions != ["create"]))
+                ) | not
+              )
+            ]')
+
+          HIGH_COUNT=$(echo "$HIGH_CHANGES" | jq 'length')
+          MED_COUNT=$(echo "$MED_CHANGES" | jq 'length')
+          LOW_COUNT=$(echo "$LOW_CHANGES" | jq 'length')
+          TOTAL=$((HIGH_COUNT + MED_COUNT + LOW_COUNT))
+
+          # ── Build readable lists ──
+          HIGH_LIST=$(echo "$HIGH_CHANGES" | jq -r '.[] | "\(.change.actions | join(",") | ascii_upcase)  \(.type)  \(.address)"')
+          MED_LIST=$(echo "$MED_CHANGES" | jq -r '.[] | "\(.change.actions | join(",") | ascii_upcase)  \(.type)  \(.address)"')
+          LOW_LIST=$(echo "$LOW_CHANGES" | jq -r '.[] | "\(.change.actions | join(",") | ascii_upcase)  \(.type)  \(.address)"')
+
+          # ── Print to workflow log ──
+          echo ""
+          echo "============================================================"
+          echo "  IMPACT ANALYSIS"
+          echo "  Total: $TOTAL changes"
+          echo "  HIGH: $HIGH_COUNT | MEDIUM: $MED_COUNT | LOW: $LOW_COUNT"
+          echo "============================================================"
+          if [ "$HIGH_COUNT" -gt 0 ]; then echo "::error::$HIGH_COUNT HIGH impact changes"; echo "$HIGH_LIST"; fi
+          if [ "$MED_COUNT" -gt 0 ]; then echo "::warning::$MED_COUNT MEDIUM impact changes"; echo "$MED_LIST"; fi
+          echo ""
+
+          # ── Save for PR comment step ──
+          {
+            echo "high_count=$HIGH_COUNT"
+            echo "med_count=$MED_COUNT"
+            echo "low_count=$LOW_COUNT"
+            echo "total=$TOTAL"
+          } >> "$GITHUB_OUTPUT"
+
+          # Multiline outputs using heredoc
+          {
+            echo "high_list<<EOFHIGH"
+            echo "$HIGH_LIST"
+            echo "EOFHIGH"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "med_list<<EOFMED"
+            echo "$MED_LIST"
+            echo "EOFMED"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "low_list<<EOFLOW"
+            echo "$LOW_LIST"
+            echo "EOFLOW"
+          } >> "$GITHUB_OUTPUT"
+
+      # ────────────────────────────────────────────────────────────
+      # NEW: Post impact summary as a comment on the PR
+      # ────────────────────────────────────────────────────────────
+      - name: Post impact summary to PR
+        if: github.event_name == 'pull_request' && steps.impact.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const high = parseInt('${{ steps.impact.outputs.high_count }}') || 0;
+            const med  = parseInt('${{ steps.impact.outputs.med_count }}')  || 0;
+            const low  = parseInt('${{ steps.impact.outputs.low_count }}')  || 0;
+            const total = parseInt('${{ steps.impact.outputs.total }}')     || 0;
+
+            const highList = `${{ steps.impact.outputs.high_list }}`.trim();
+            const medList  = `${{ steps.impact.outputs.med_list }}`.trim();
+            const lowList  = `${{ steps.impact.outputs.low_list }}`.trim();
+
+            // Header based on severity
+            let header;
+            if (high > 0) {
+              header = 'HIGH IMPACT DETECTED';
+            } else if (med > 0) {
+              header = 'MEDIUM IMPACT';
+            } else if (total > 0) {
+              header = 'LOW IMPACT';
+            } else {
+              header = 'NO CHANGES';
+            }
+
+            let body = `## ${header}\n\n`;
+            body += `| Severity | Count |\n|----------|-------|\n`;
+            body += `| High | ${high} |\n`;
+            body += `| Medium | ${med} |\n`;
+            body += `| Low | ${low} |\n`;
+            body += `| **Total** | **${total}** |\n\n`;
+
+            if (high > 0) {
+              body += `### High impact changes\n`;
+              body += `> Delete or replace on VMs, managed disks, SQL, KeyVault, networking, resource groups, backup\n\n`;
+              body += `\`\`\`\n${highList}\n\`\`\`\n\n`;
+            }
+
+            if (med > 0) {
+              body += `### Medium impact changes\n`;
+              body += `> Updates to critical resources, or changes to RBAC, storage, extensions\n\n`;
+              body += `\`\`\`\n${medList}\n\`\`\`\n\n`;
+            }
+
+            if (low > 0) {
+              body += `<details>\n<summary>Low impact changes (${low})</summary>\n\n`;
+              body += `\`\`\`\n${lowList}\n\`\`\`\n</details>\n\n`;
+            }
+
+            body += `---\n*Terraform plan impact analysis — auto-generated by pipeline*`;
+
+            // Find existing comment and update, or create new
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.body && c.body.includes('Terraform plan impact analysis')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      # ── Existing workflow_dispatch actions (unchanged) ──
+      - name: Terraform Import
+        if: ${{ github.event.inputs.action == 'import' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform import ${{ github.event.inputs.resource_address }} "${{ github.event.inputs.resource_id }}"
+
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform destroy -auto-approve -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Show (Post-Import/Destroy/Modify)
+        if: ${{ github.event.inputs.action == 'import' || github.event.inputs.action == 'destroy' || github.event.inputs.action == 'modify' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Terraform Modify
+        if: ${{ github.event.inputs.action == 'modify' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: echo "Modify step complete. Plan already generated."
+
+      - name: Terraform Unlock
+        if: ${{ github.event.inputs.action == 'unlock' }}
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform force-unlock ${{ github.event.inputs.lock_id }}
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
+
+  # ─────────────────────────────────────────────────────────────────
+  # Apply job — COMPLETELY UNCHANGED
+  # ─────────────────────────────────────────────────────────────────
+  terraform-apply:
+    name: "Terraform - Apply"
+    needs: terraform-plan
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'modify' && needs.terraform-plan.result == 'success') ||
+      (github.event_name == 'push' && needs.terraform-plan.result == 'success') ||
+      (github.event_name == 'pull_request' && needs.terraform-plan.result == 'success')
+    runs-on: ubuntu-latest
+    environment: UAT
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git credentials
+        run: |
+          git config --global url."https://${{ secrets.GH_TOKEN }}@atc-github.azure.cloud.bmw/".insteadOf "https://atc-github.azure.cloud.bmw/"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_UAT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Plan (re-run)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -var-file=${{ env.TF_VARS }}
+
+      - name: Terraform Show (Post-Apply)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform show
+
+      - name: Azure Logout
+        if: always()
+        run: az logout
