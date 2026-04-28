@@ -1,0 +1,99 @@
+- name: Terraform Plan
+  id: plan
+  working-directory: terraform/env/${{ inputs.environment }}
+  run: |
+    terraform plan -var-file=terraform.tfvars -out=tfplan.binary -no-color
+    terraform show -json tfplan.binary > tfplan.json
+
+- name: Plan Summary Table (per file)
+  if: always()
+  working-directory: terraform/env/${{ inputs.environment }}
+  run: |
+    # Group resource_changes by their config file (.tf source).
+    # We extract the file from the resource address by mapping each address
+    # to the .tf file that declares it. Terraform's JSON plan doesn't carry
+    # file-of-origin directly, so we derive it from the module path and
+    # resource type/name by grep-listing the .tf files.
+
+    # Build address -> file map
+    declare -A FILE_MAP
+    while IFS= read -r tf; do
+      # Each block: resource "<type>" "<name>"  OR  module "<name>"
+      grep -nE '^[[:space:]]*(resource|module)[[:space:]]+"' "$tf" | while read -r line; do
+        block=$(echo "$line" | sed -E 's/^[0-9]+://')
+        kind=$(echo "$block" | awk '{print $1}')
+        if [ "$kind" = "resource" ]; then
+          rtype=$(echo "$block" | awk -F'"' '{print $2}')
+          rname=$(echo "$block" | awk -F'"' '{print $4}')
+          echo "${rtype}.${rname}=$(basename $tf)"
+        else
+          mname=$(echo "$block" | awk -F'"' '{print $2}')
+          echo "module.${mname}=$(basename $tf)"
+        fi
+      done
+    done < <(find . -maxdepth 1 -name '*.tf') > addr-to-file.txt
+
+    # For every resource_change in the plan, resolve its file
+    jq -r '
+      .resource_changes[] |
+      [.address, (.change.actions | join(","))] | @tsv
+    ' tfplan.json > changes.tsv
+
+    # Build a TSV: file<TAB>create<TAB>update<TAB>delete
+    awk -F'\t' '
+      NR==FNR { split($0,p,"="); map[p[1]]=p[2]; next }
+      {
+        addr=$1; actions=$2
+        # Strip array indexes [0], ["key"]
+        key=addr
+        gsub(/\[[^]]+\]/,"",key)
+        # Try full key first (e.g. azurerm_virtual_machine.vm), then module prefix
+        file=map[key]
+        if (file=="") {
+          # Walk back stripping segments until we find a hit
+          while (key != "" && file=="") {
+            sub(/\.[^.]+$/, "", key)
+            file=map[key]
+          }
+        }
+        if (file=="") file="(unknown)"
+
+        if (actions=="create")               c[file]++
+        else if (actions=="update")          u[file]++
+        else if (actions=="delete")          d[file]++
+        else if (actions=="delete,create" || actions=="create,delete") {
+          d[file]++; c[file]++
+        }
+        files[file]=1
+      }
+      END {
+        for (f in files) printf "%s\t%d\t%d\t%d\n", f, c[f]+0, u[f]+0, d[f]+0
+      }
+    ' addr-to-file.txt changes.tsv | sort > per-file.tsv
+
+    # Render as markdown with shields.io badges for colour
+    {
+      echo "## Terraform Plan — ${{ inputs.environment }}"
+      echo ""
+      echo "| Change File | 🟢 Create | 🟡 Update | 🔴 Delete |"
+      echo "|---|---|---|---|"
+      while IFS=$'\t' read -r file create update delete; do
+        # Pick badge colour: brightgreen if >0, lightgrey if 0
+        c_color=$([ "$create"  -gt 0 ] && echo "brightgreen" || echo "lightgrey")
+        u_color=$([ "$update"  -gt 0 ] && echo "yellow"      || echo "lightgrey")
+        d_color=$([ "$delete"  -gt 0 ] && echo "red"         || echo "lightgrey")
+        echo "| \`$file\` | ![](https://img.shields.io/badge/$create-create-$c_color) | ![](https://img.shields.io/badge/$update-update-$u_color) | ![](https://img.shields.io/badge/$delete-delete-$d_color) |"
+      done < per-file.tsv
+
+      # Totals row
+      TOT_C=$(awk -F'\t' '{s+=$2} END {print s+0}' per-file.tsv)
+      TOT_U=$(awk -F'\t' '{s+=$3} END {print s+0}' per-file.tsv)
+      TOT_D=$(awk -F'\t' '{s+=$4} END {print s+0}' per-file.tsv)
+      echo "| **TOTAL** | ![](https://img.shields.io/badge/$TOT_C-create-brightgreen) | ![](https://img.shields.io/badge/$TOT_U-update-yellow) | ![](https://img.shields.io/badge/$TOT_D-delete-red) |"
+    } >> $GITHUB_STEP_SUMMARY
+
+    # Expose totals to later steps
+    echo "create=$TOT_C"  >> $GITHUB_OUTPUT
+    echo "update=$TOT_U"  >> $GITHUB_OUTPUT
+    echo "delete=$TOT_D"  >> $GITHUB_OUTPUT
+  id: summary
