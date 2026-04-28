@@ -6,12 +6,31 @@
     U=$(jq '[.resource_changes[]|select(.change.actions==["update"])]|length' tfplan.json)
     D=$(jq '[.resource_changes[]|select(.change.actions==["delete"])]|length' tfplan.json)
     R=$(jq '[.resource_changes[]|select(.change.actions|sort==["create","delete"])]|length' tfplan.json)
+
+    # Build the table once, send to BOTH the log and the summary
+    SUMMARY=$(cat <<EOF
+    ====================================================
+      Terraform Plan Summary — ${{ inputs.environment }}
+    ====================================================
+      🟢 Create  : $C
+      🟡 Update  : $U
+      🔴 Delete  : $D
+      🟠 Replace : $R
+    ====================================================
+    EOF
+    )
+
+    # Print to live job log (visible in the pipeline)
+    echo "$SUMMARY"
+
+    # Also write the markdown version to the Summary tab
     {
       echo "## Terraform Plan — ${{ inputs.environment }}"
       echo "| 🟢 Create | 🟡 Update | 🔴 Delete | 🟠 Replace |"
       echo "|---|---|---|---|"
       echo "| ![](https://img.shields.io/badge/$C-create-brightgreen) | ![](https://img.shields.io/badge/$U-update-yellow) | ![](https://img.shields.io/badge/$D-delete-red) | ![](https://img.shields.io/badge/$R-replace-orange) |"
     } >> $GITHUB_STEP_SUMMARY
+
     echo "create=$C" >> $GITHUB_OUTPUT
     echo "update=$U" >> $GITHUB_OUTPUT
     echo "delete=$D" >> $GITHUB_OUTPUT
