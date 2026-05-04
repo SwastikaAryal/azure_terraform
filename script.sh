@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================================
-# tf-rebuild-state-nojq.sh
-# Same as tf-rebuild-state.sh but does NOT require jq.
-# Uses `az ... --query ... -o tsv` to get fields directly.
+# tf-rebuild-state-nojq.sh  (v2 — strips CRLF for Git Bash on Windows)
+# Rebuilds Terraform config + state for an Azure Resource Group when the
+# state file (and possibly .tf files) have been lost.
+#
+# Strategy (requires Terraform >= 1.5):
+#   1. Enumerate every resource in the RG via `az resource list`.
+#   2. Map each Azure type to its azurerm_* Terraform type.
+#   3. Emit an `import {}` block per resource into ./imports.tf.
+#   4. You then run:
+#        terraform plan -generate-config-out=generated.tf
+#        terraform apply
 #
 # Usage:
 #   ./tf-rebuild-state-nojq.sh <resource-group> [--subscription <id>] [--bootstrap]
@@ -33,7 +41,7 @@ done
 command -v az        >/dev/null || { echo "az CLI not found";    exit 1; }
 command -v terraform >/dev/null || { echo "terraform not found"; exit 1; }
 
-TF_VER=$(terraform version | head -1 | awk '{print $2}' | tr -d 'v')
+TF_VER=$(terraform version | head -1 | awk '{print $2}' | tr -d 'v\r')
 if [[ "$(printf '%s\n1.5.0\n' "$TF_VER" | sort -V | head -1)" != "1.5.0" ]]; then
   echo "Terraform $TF_VER detected. This flow needs >= 1.5 for import blocks + -generate-config-out."
   exit 1
@@ -42,8 +50,8 @@ fi
 if [[ -n "$SUBSCRIPTION" ]]; then
   az account set --subscription "$SUBSCRIPTION"
 fi
-SUB_ID=$(az account show --query id -o tsv)
-TENANT_ID=$(az account show --query tenantId -o tsv)
+SUB_ID=$(az account show --query id -o tsv | tr -d '\r')
+TENANT_ID=$(az account show --query tenantId -o tsv | tr -d '\r')
 
 # ---------- bootstrap provider + init (optional) ---------------------------
 if $BOOTSTRAP; then
@@ -126,17 +134,21 @@ declare -A TYPE_MAP=(
 )
 
 sanitize() {
-  echo "$1" | tr '[:upper:]' '[:lower:]' \
+  # also strip CR just in case it sneaks in via a name
+  echo "$1" | tr -d '\r' | tr '[:upper:]' '[:lower:]' \
     | sed -E 's/[^a-z0-9_]+/_/g; s/^_+|_+$//g; s/^([0-9])/_\1/'
 }
 
-# ---------- discovery (no jq: ask az for TSV directly) ---------------------
+# ---------- discovery (no jq: ask az for TSV directly, strip CRLF) ---------
 echo "Listing resources in resource group: $RG"
-RG_ID=$(az group show --name "$RG" --query id -o tsv)
+RG_ID=$(az group show --name "$RG" --query id -o tsv | tr -d '\r')
 
 # Pull just the three fields we need, tab-separated, one resource per line.
+# tr -d '\r' is essential on Git Bash for Windows; without it each line ends
+# in \r which gets embedded inside the quoted "id = ..." string and breaks
+# `terraform plan`.
 RESOURCES_TSV=$(az resource list --resource-group "$RG" \
-  --query "[].[type, name, id]" -o tsv)
+  --query "[].[type, name, id]" -o tsv | tr -d '\r')
 
 COUNT=$(printf '%s\n' "$RESOURCES_TSV" | grep -c . || true)
 echo "Found $COUNT child resources (plus the RG itself)."
@@ -163,6 +175,11 @@ emit_import "azurerm_resource_group" "$(sanitize "$RG")" "$RG_ID"
 # 2) Child resources — read TSV line by line
 declare -A NAME_SEEN
 while IFS=$'\t' read -r AZ_TYPE AZ_NAME AZ_ID; do
+  # belt-and-suspenders CRLF strip on every field
+  AZ_TYPE="${AZ_TYPE//$'\r'/}"
+  AZ_NAME="${AZ_NAME//$'\r'/}"
+  AZ_ID="${AZ_ID//$'\r'/}"
+
   [[ -z "${AZ_TYPE:-}" ]] && continue
 
   KEY=$(echo "$AZ_TYPE" | tr '[:upper:]' '[:lower:]')
@@ -187,6 +204,9 @@ while IFS=$'\t' read -r AZ_TYPE AZ_NAME AZ_ID; do
 
   emit_import "$TF_TYPE" "$TF_NAME" "$AZ_ID"
 done <<< "$RESOURCES_TSV"
+
+# Final safety net: scrub any stray CR from the output file itself.
+sed -i 's/\r//g' "$IMPORTS_FILE" 2>/dev/null || true
 
 WRITTEN=$(grep -c '^import {' "$IMPORTS_FILE" || true)
 SKIPPED=$(wc -l < "$SKIPPED_LOG" | tr -d ' ')
