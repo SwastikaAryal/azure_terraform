@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================================
-# tf-rebuild-state.sh
-# Rebuilds Terraform config + state for an Azure Resource Group when the
-# state file (and possibly .tf files) have been lost.
-#
-# Strategy (requires Terraform >= 1.5):
-#   1. Enumerate every resource in the RG via `az resource list`.
-#   2. Map each Azure type to its azurerm_* Terraform type.
-#   3. Emit an `import {}` block per resource into ./imports.tf.
-#   4. You then run:
-#        terraform plan -generate-config-out=generated.tf
-#        terraform apply        # this is what actually creates state
+# tf-rebuild-state-nojq.sh
+# Same as tf-rebuild-state.sh but does NOT require jq.
+# Uses `az ... --query ... -o tsv` to get fields directly.
 #
 # Usage:
-#   ./tf-rebuild-state.sh <resource-group> [--subscription <id>] [--bootstrap]
+#   ./tf-rebuild-state-nojq.sh <resource-group> [--subscription <id>] [--bootstrap]
 #
-# --bootstrap  also writes a minimal provider.tf and runs `terraform init`
-#              so you can run this in an empty directory.
-#
-# Requirements: az CLI (logged in), terraform >= 1.5, jq
+# Requirements: az CLI (logged in), terraform >= 1.5
 # ============================================================================
 
 set -euo pipefail
@@ -43,9 +32,8 @@ done
 # ---------- pre-flight ------------------------------------------------------
 command -v az        >/dev/null || { echo "az CLI not found";    exit 1; }
 command -v terraform >/dev/null || { echo "terraform not found"; exit 1; }
-command -v jq        >/dev/null || { echo "jq not found";        exit 1; }
 
-TF_VER=$(terraform version -json | jq -r '.terraform_version')
+TF_VER=$(terraform version | head -1 | awk '{print $2}' | tr -d 'v')
 if [[ "$(printf '%s\n1.5.0\n' "$TF_VER" | sort -V | head -1)" != "1.5.0" ]]; then
   echo "Terraform $TF_VER detected. This flow needs >= 1.5 for import blocks + -generate-config-out."
   exit 1
@@ -142,11 +130,15 @@ sanitize() {
     | sed -E 's/[^a-z0-9_]+/_/g; s/^_+|_+$//g; s/^([0-9])/_\1/'
 }
 
-# ---------- discovery -------------------------------------------------------
+# ---------- discovery (no jq: ask az for TSV directly) ---------------------
 echo "Listing resources in resource group: $RG"
 RG_ID=$(az group show --name "$RG" --query id -o tsv)
-RESOURCES_JSON=$(az resource list --resource-group "$RG" -o json)
-COUNT=$(echo "$RESOURCES_JSON" | jq 'length')
+
+# Pull just the three fields we need, tab-separated, one resource per line.
+RESOURCES_TSV=$(az resource list --resource-group "$RG" \
+  --query "[].[type, name, id]" -o tsv)
+
+COUNT=$(printf '%s\n' "$RESOURCES_TSV" | grep -c . || true)
 echo "Found $COUNT child resources (plus the RG itself)."
 
 IMPORTS_FILE="imports.tf"
@@ -154,7 +146,6 @@ SKIPPED_LOG="./skipped.log"
 : > "$IMPORTS_FILE"
 : > "$SKIPPED_LOG"
 
-# ---------- emit import blocks ---------------------------------------------
 emit_import() {
   local tf_type="$1" tf_name="$2" az_id="$3"
   cat >> "$IMPORTS_FILE" <<EOF
@@ -169,12 +160,10 @@ EOF
 # 1) Resource group itself
 emit_import "azurerm_resource_group" "$(sanitize "$RG")" "$RG_ID"
 
-# 2) Children
+# 2) Child resources — read TSV line by line
 declare -A NAME_SEEN
-echo "$RESOURCES_JSON" | jq -c '.[]' | while read -r row; do
-  AZ_TYPE=$(echo "$row" | jq -r '.type')
-  AZ_NAME=$(echo "$row" | jq -r '.name')
-  AZ_ID=$(echo "$row"   | jq -r '.id')
+while IFS=$'\t' read -r AZ_TYPE AZ_NAME AZ_ID; do
+  [[ -z "${AZ_TYPE:-}" ]] && continue
 
   KEY=$(echo "$AZ_TYPE" | tr '[:upper:]' '[:lower:]')
   TF_TYPE="${TYPE_MAP[$KEY]:-}"
@@ -187,7 +176,6 @@ echo "$RESOURCES_JSON" | jq -c '.[]' | while read -r row; do
 
   BASE=$(sanitize "$AZ_NAME")
   TF_NAME="$BASE"
-  # de-duplicate within the same TF type
   KEY2="${TF_TYPE}.${TF_NAME}"
   i=2
   while [[ -n "${NAME_SEEN[$KEY2]:-}" ]]; do
@@ -198,7 +186,7 @@ echo "$RESOURCES_JSON" | jq -c '.[]' | while read -r row; do
   NAME_SEEN[$KEY2]=1
 
   emit_import "$TF_TYPE" "$TF_NAME" "$AZ_ID"
-done
+done <<< "$RESOURCES_TSV"
 
 WRITTEN=$(grep -c '^import {' "$IMPORTS_FILE" || true)
 SKIPPED=$(wc -l < "$SKIPPED_LOG" | tr -d ' ')
@@ -207,32 +195,12 @@ cat <<EOF
 
 ==================== DONE ====================
 Wrote $WRITTEN import blocks to ./$IMPORTS_FILE
-Skipped (unmapped types): $SKIPPED   (see ./skipped.log; extend TYPE_MAP and re-run if needed)
+Skipped (unmapped types): $SKIPPED   (see ./skipped.log)
 
-NEXT STEPS — this is what actually rebuilds your state:
-
-  1) Generate matching Terraform config from the imports:
-       terraform plan -generate-config-out=generated.tf
-
-     If plan complains about already-defined resources or missing
-     attributes, fix them in generated.tf and re-run plan.
-
-  2) Once plan is clean and shows only the imports (no creates/deletes):
-       terraform apply
-
-     This actually writes terraform.tfstate with all the imported resources.
-
-  3) Inspect drift and tidy generated.tf:
-       terraform plan
-     Re-run until it reports "No changes". Then commit your code +
-     push state to remote backend so you don't lose it again.
-
-NOTES:
-  - Sub-resources like NSG rules, subnets, SQL DBs under a server, RBAC
-    role assignments, key vault access policies, and diagnostic settings
-    are NOT returned by 'az resource list' and need to be imported
-    separately (or refactored as inline blocks of their parent).
-  - Linux vs Windows: this map defaults to Linux variants for VMs and
-    Web Apps. Edit imports.tf before step 1 if you have Windows ones.
+NEXT STEPS:
+  1) terraform plan -generate-config-out=generated.tf
+  2) Review the plan. It must say "0 to add, 0 to change, 0 to destroy"
+     and only show imports.
+  3) terraform apply        # this is what writes terraform.tfstate
 ==============================================
 EOF
