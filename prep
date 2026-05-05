@@ -1,1 +1,3 @@
-terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-app2"]' '/subscriptions/72a3d043-b69a-4cbb-bcc5-847adcc208b6/resourceGroups/FSAM-PREP-RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app2/extensions/AADLoginForWindows'
+$addr = 'azurerm_virtual_machine_extension.aad_login["fs-prep-app2"]'
+$id = '/subscriptions/72a3d043-b69a-4cbb-bcc5-847adcc208b6/resourceGroups/FSAM-PREP-RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app2/extensions/AADLoginForWindows'
+terraform import $addr $id
