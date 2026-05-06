@@ -1,0 +1,4 @@
+az role assignment create \
+  --assignee 31d7ca14-59a6-4ebf-9f65-017f7db6a62c \
+  --role "Reader" \
+  --scope "/subscriptions/4b4ad43c-6665-4f59-afb4-562f560bb999/resourceGroups/Image_Offers/providers/Microsoft.Compute/galleries/Iaas_OS_Images"
