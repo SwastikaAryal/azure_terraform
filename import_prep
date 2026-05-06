@@ -1,0 +1,26 @@
+SUB=""
+RG="FSAM-PREP-RG"
+
+# fs-prep-web1
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-web1"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-web1/extensions/AADLoginForWindows"
+
+# fs-prep-web2
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-web2"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-web2/extensions/AADLoginForWindows"
+
+# fs-prep-app1
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-app1"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app1/extensions/AADLoginForWindows"
+
+# fs-prep-app2  ← the one that actually needs it
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-app2"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app2/extensions/AADLoginForWindows"
+
+# fs-prep-app3
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-app3"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app3/extensions/AADLoginForWindows"
+
+# fs-prep-app4
+terraform import 'azurerm_virtual_machine_extension.aad_login["fs-prep-app4"]' \
+  "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Compute/virtualMachines/fs-prep-app4/extensions/AADLoginForWindows"
